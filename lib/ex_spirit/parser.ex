@@ -28,6 +28,7 @@ defmodule ExSpirit.Parser do
 
 
   defmacro defrule({name, _, [parser_ast]}) when is_atom(name), do: defrule_impl(name, parser_ast, [])
+
   defmacro defrule({name, _, [{:context, _, _} = context_ast]}, do: do_ast) when is_atom(name) do
     quote location: :keep do
       def unquote(name)(unquote(context_ast)) do
@@ -39,6 +40,7 @@ defmodule ExSpirit.Parser do
       end
     end
   end
+
   defmacro defrule({name, _, [parser_ast]}, opts) when is_atom(name), do: defrule_impl(name, parser_ast, opts)
 
   defp defrule_impl(name, parser_ast, opts) do
@@ -85,7 +87,7 @@ defmodule ExSpirit.Parser do
   defmacro __using__(_) do
     quote location: :keep do
       require ExSpirit
-      import ExSpirit.Parser, only: [defrule: 2]
+      import ExSpirit.Parser, only: [defrule: 1, defrule: 2]
 
 
       defmacro parse(rest, parser, opts \\ []) do

@@ -5,7 +5,7 @@ defmodule ExSpirit.Tests.Parser do
 
   defrule testrule(
     seq([ uint(), lit(?\s), uint() ])
-    ), []
+    )
 
   defrule testrule_map(
     seq([ uint(), lit(?\s), uint() ])
