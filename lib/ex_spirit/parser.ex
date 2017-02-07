@@ -42,13 +42,26 @@ defmodule ExSpirit.Parser do
 
   def _no_skip(context), do: context
 
+  defmacro defrule({name, _, _}, parser_ast) when is_atom(name), do: defrule_impl(name, parser_ast)
+  defmacro defrule(name, parser_ast) when is_atom(name), do: defrule_impl(name, parser_ast)
+
+  defp defrule_impl(name, parser_ast) do
+    quote location: :keep do
+      def unquote(name)(context) do
+        context |> unquote(parser_ast)
+      end
+    end
+  end
+
   defmacro __using__(_) do
     quote location: :keep do
       require ExSpirit
+      import ExSpirit.Parser, only: [defrule: 2]
 
 
       def valid_context?(%{error: nil}), do: true
       def valid_context?(_), do: false
+
 
 
       def lit(context, literal) when is_binary(literal) do
@@ -74,7 +87,6 @@ defmodule ExSpirit.Parser do
         end
       end
 
-
       def lit(context, literal) when is_integer(literal) do
         if !valid_context?(context) do
           context
@@ -86,6 +98,7 @@ defmodule ExSpirit.Parser do
               rest: rest,
               position: context.position + lit_size,
               column: context.column + 1,
+              result: nil
             }
           else
             %{context |

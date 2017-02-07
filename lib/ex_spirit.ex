@@ -86,6 +86,13 @@ defmodule ExSpirit do
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, nil, ""}
 
+    # You can use `defrule`s as any other terminal parser
+    iex> import ExSpirit.Tests.Parser
+    iex> require ExSpirit
+    iex> contexts = ExSpirit.parse("42 64", testrule())
+    iex> {contexts.error, contexts.result, contexts.rest}
+    {nil, [42, 64], ""}
+
 
   ```
   """
