@@ -11,7 +11,7 @@ defmodule ExSpirit.Parser do
       column: 1,
       rest: "",
       skipper: &ExSpirit.Parser._no_skip/1,
-      results: [],
+      result: nil,
       error: nil
       )
   end
@@ -44,26 +44,52 @@ defmodule ExSpirit.Parser do
 
   defmacro __using__(_) do
     quote location: :keep do
+      require ExSpirit
+
+
       def valid_context?(%{error: nil}), do: true
       def valid_context?(_), do: false
 
 
-      def lit(context, literal) do
+      def lit(context, literal) when is_binary(literal) do
         if !valid_context?(context) do
           context
         else
           if String.starts_with?(context.rest, literal) do
             lit_size = byte_size(literal)
             lit_bitsize = lit_size * 8
+            lit_chars = String.length(literal)
             <<_::size(lit_bitsize), rest::binary>> = context.rest
              %{context |
               rest: rest,
               position: context.position + lit_size,
-              column: context.column + lit_size,
+              column: context.column + lit_chars,
+              result: nil
             }
           else
             %{context |
-              error: %ExSpirit.Parser.ParseException{message: "literal `#{literal}`` did not match the input", context: context}
+              error: %ExSpirit.Parser.ParseException{message: "literal `#{literal}` did not match the input", context: context}
+            }
+          end
+        end
+      end
+
+
+      def lit(context, literal) when is_integer(literal) do
+        if !valid_context?(context) do
+          context
+        else
+          <<first::utf8, rest::binary>> = context.rest
+          lit_size = byte_size(<<first::utf8>>)
+          if first === literal do
+             %{context |
+              rest: rest,
+              position: context.position + lit_size,
+              column: context.column + 1,
+            }
+          else
+            %{context |
+              error: %ExSpirit.Parser.ParseException{message: "literal `#{<<literal::utf8>>}` did not match the input", context: context}
             }
           end
         end
@@ -83,13 +109,13 @@ defmodule ExSpirit.Parser do
       end
 
       defp uint_10(context, _radix, minDigits, maxDigits, num, maxDigits)  do
-        %{context | results: context.results++[num], position: context.position + maxDigits, column: context.column + maxDigits}
+        %{context | result: num, position: context.position + maxDigits, column: context.column + maxDigits}
       end
       defp uint_10(%{rest: <<c::utf8, rest::binary>>} = context, radix, minDigits, maxDigits, num, digits) when c>=?0 and c<=?0+radix-1 do
         uint_10(%{context|rest: rest}, radix, minDigits, maxDigits, (num*radix)+(c-?0), digits+1)
       end
       defp uint_10(context, _radix, minDigits, _maxDigits, num, digits) when minDigits<=digits do
-        %{context | results: context.results++[num], position: context.position + digits, column: context.column + digits}
+        %{context | result: num, position: context.position + digits, column: context.column + digits}
       end
       defp uint_10(context, radix, minDigits, _maxDigits, num, digits) when minDigits>digits do
         %{context |
@@ -98,7 +124,7 @@ defmodule ExSpirit.Parser do
       end
 
       defp uint_36(context, _radix, minDigits, maxDigits, num, maxDigits)  do
-        %{context | results: context.results++[num], position: context.position + maxDigits, column: context.column + maxDigits}
+        %{context | result: num, position: context.position + maxDigits, column: context.column + maxDigits}
       end
       defp uint_36(%{rest: <<c::utf8, rest::binary>>} = context, radix, minDigits, maxDigits, num, digits) when (c>=?0 and c<=?0+radix-1) or (c>=?a and c<=?a+radix-11) or (c>=?A and c<=?A+radix-11) do
         num = if c > ?9 do
@@ -110,12 +136,44 @@ defmodule ExSpirit.Parser do
         uint_36(%{context|rest: rest}, radix, minDigits, maxDigits, num, digits+1)
       end
       defp uint_36(context, _radix, minDigits, _maxDigits, num, digits) when minDigits<=digits do
-        %{context | results: context.results++[num], position: context.position + digits, column: context.column + digits}
+        %{context | result: num, position: context.position + digits, column: context.column + digits}
       end
       defp uint_36(context, radix, minDigits, _maxDigits, num, digits) when minDigits>digits do
         %{context |
           error: %ExSpirit.Parser.ParseException{message: "Parsing uint with radix of #{radix} had #{digits} digits but #{minDigits} minimum digits were required", context: context}
         }
+      end
+
+
+      defmacro seq(context, [first_seq | rest_seq] = sequences) do
+        quote location: :keep do
+          context = unquote(context)
+          if !valid_context?(context) do
+            context
+          else
+            context |> unquote(seq_expand(context, first_seq, rest_seq))
+          end
+        end
+      end
+
+      defp seq_expand(context_ast, this_ast, [next_ast | rest_ast]) do
+        quote do
+          unquote(this_ast) |> case do
+            %{error: nil, result: nil} = good_context ->
+              good_context |> unquote(seq_expand(context_ast, next_ast, rest_ast))
+            %{error: nil, result: result} = good_context ->
+              case good_context |> unquote(seq_expand(context_ast, next_ast, rest_ast)) do
+                %{error: nil, result: nil} = return_context -> %{return_context | result: result}
+                %{error: nil, result: results} = return_context when is_list(results) -> %{return_context | result: [result | results]}
+                %{error: nil, result: results} = return_context -> %{return_context | result: [result, results]}
+                bad_context -> bad_context
+              end
+            bad_context -> bad_context
+          end
+        end
+      end
+      defp seq_expand(_context_ast, this_ast, []) do
+        this_ast
       end
 
 
