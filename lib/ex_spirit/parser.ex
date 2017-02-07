@@ -18,11 +18,11 @@ defmodule ExSpirit.Parser do
   end
 
   defmodule ParseException do
-    defexception message: "Unknonwn parse error", context: %Context{}
+    defexception message: "Unknown parse error", context: %Context{}
 
     def message(exc) do
       c = exc.context
-      "#{c.filename}:#{c.line}:#{c.column}: #{exc.message}\n\tRuleStack: #{to_string c.rulestack}\n\tInput: #{String.slice(c.rest, 0, 255)}"
+      "#{c.filename}:#{c.line}:#{c.column}: #{exc.message}\n\tRuleStack: [#{Enum.join(c.rulestack, ", ")}]\n\tInput: #{String.slice(c.rest, 0, 255)}"
     end
   end
 

@@ -29,7 +29,7 @@ defmodule ExSpirit do
     {nil, 42, ""}
 
     # `|>` Returns the result of the last parser in the pipe chain,
-    # `lit` always return nil for example
+    # `lit` always returns nil for example
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42Test", uint() |> lit("Test"))
     iex> {context.error, context.result, context.rest}
@@ -81,14 +81,12 @@ defmodule ExSpirit do
 
     # `alt` parses a set of alternatives in order and returns the first success
     iex> import ExSpirit.Tests.Parser
-    iex> require ExSpirit
     iex> contexts = parse("Test", alt([uint(16), lit("Test")]))
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, nil, ""}
 
     # You can use `defrule`s as any other terminal parser
     iex> import ExSpirit.Tests.Parser
-    iex> require ExSpirit
     iex> contexts = parse("42 64", testrule())
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, [42, 64], ""}
@@ -96,28 +94,24 @@ defmodule ExSpirit do
     # `defrule`'s also set up a stack of calls down a context so you know
     # 'where' an error occured, so name the rules descriptively
     iex> import ExSpirit.Tests.Parser
-    iex> require ExSpirit
     iex> contexts = parse("42 fail", testrule())
     iex> {contexts.error.context.rulestack, contexts.result, contexts.rest}
     {[:testrule], nil, "fail"}
 
     # `defrule`s can map the result to return a different one:
     iex> import ExSpirit.Tests.Parser
-    iex> require ExSpirit
     iex> contexts = parse("42 64", testrule_map())
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, [2, 24], ""}
 
     # `defrule`s can also operate over the context itself to do anything
     iex> import ExSpirit.Tests.Parser
-    iex> require ExSpirit
     iex> contexts = parse("42 64", testrule_fun())
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, {"altered", [42, 64]}, ""}
 
     # `defrule`s can also be a context function by only passing in `context`
     iex> import ExSpirit.Tests.Parser
-    iex> require ExSpirit
     iex> contexts = parse("42 64", testrule_context())
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, "always success", "42 64"}
