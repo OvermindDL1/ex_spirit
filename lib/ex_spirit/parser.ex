@@ -12,7 +12,8 @@ defmodule ExSpirit.Parser do
       rest: "",
       skipper: nil,
       result: nil,
-      error: nil
+      error: nil,
+      rulestack: []
       )
   end
 
@@ -21,7 +22,7 @@ defmodule ExSpirit.Parser do
 
     def message(exc) do
       c = exc.context
-      "#{c.filename}:#{c.line}:#{c.column}: #{exc.message}\n\tInput: #{String.slice(c.rest, 0, 255)}"
+      "#{c.filename}:#{c.line}:#{c.column}: #{exc.message}\n\tRuleStack: #{to_string c.rulestack}\n\tInput: #{String.slice(c.rest, 0, 255)}"
     end
   end
 
@@ -32,10 +33,13 @@ defmodule ExSpirit.Parser do
   defmacro defrule({name, _, [{:context, _, _} = context_ast]}, do: do_ast) when is_atom(name) do
     quote location: :keep do
       def unquote(name)(unquote(context_ast)) do
-        if !valid_context?(unquote(context_ast)) do
-          unquote(context_ast)
+        context = unquote(context_ast)
+        if !valid_context?(context) do
+          context
         else
-          unquote(do_ast)
+          rule_context = %{context | rulestack: [unquote(name) | context.rulestack]}
+          return_context = unquote(do_ast)
+          %{return_context | rulestack: context.rulestack}
         end
       end
     end
@@ -48,10 +52,11 @@ defmodule ExSpirit.Parser do
     context_ast = quote do context end
     quote location: :keep do
       def unquote(name)(unquote(orig_context_ast)) do
-        unquote(context_ast) = unquote(orig_context_ast) |> unquote(parser_ast)
+        unquote(context_ast) = %{unquote(orig_context_ast) | rulestack: [unquote(name) | unquote(orig_context_ast).rulestack]}
+        unquote(context_ast) = unquote(context_ast) |> unquote(parser_ast)
         unquote(context_ast) = unquote(defrule_impl_map(orig_context_ast, context_ast, opts[:map]))
         unquote(context_ast) = unquote(defrule_impl_fun(context_ast, opts[:fun]))
-        unquote(context_ast)
+        %{unquote(context_ast) | rulestack: unquote(orig_context_ast).rulestack}
       end
     end
   end

@@ -93,6 +93,14 @@ defmodule ExSpirit do
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, [42, 64], ""}
 
+    # `defrule`'s also set up a stack of calls down a context so you know
+    # 'where' an error occured, so name the rules descriptively
+    iex> import ExSpirit.Tests.Parser
+    iex> require ExSpirit
+    iex> contexts = parse("42 fail", testrule())
+    iex> {contexts.error.context.rulestack, contexts.result, contexts.rest}
+    {[:testrule], nil, "fail"}
+
     # `defrule`s can map the result to return a different one:
     iex> import ExSpirit.Tests.Parser
     iex> require ExSpirit
