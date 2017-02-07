@@ -40,13 +40,24 @@ defmodule ExSpirit do
     iex> {context.error, context.results, context.rest}
     {nil, [255], ""}
 
+    iex> import ExSpirit.Tests.Parser
+    iex> contexts = ExSpirit.parse("FF", alt([uint(16), lit("Test")]))
+    iex> {contexts.error, contexts.results, contexts.rest}
+    {nil, [255], ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> require ExSpirit
+    iex> contexts = ExSpirit.parse("Test", alt([uint(16), lit("Test")]))
+    iex> {contexts.error, contexts.results, contexts.rest}
+    {nil, [], ""}
+
 
   ```
   """
   defmacro parse(rest, parser, opts \\ []) do
     filename = opts[:filename] || quote do "<unknown>" end
     skipper = opts[:skipper] || quote do &ExSpirit.Parser._no_skip/1 end
-    quote do
+    quote location: :keep do
       %ExSpirit.Parser.Context{
         filename: unquote(filename),
         skipper: unquote(skipper),
