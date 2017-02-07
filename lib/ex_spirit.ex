@@ -129,6 +129,19 @@ defmodule ExSpirit do
     iex> {context.error, context.result, context.rest}
     {nil, 42, " "}
 
+    # You can turn off a skipper for a parser as well with `no_skip`
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse(" Test:42 ", lit("Test:") |> no_skip(uint()), skipper: lit(?\\s))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, " "}
+    {nil, 42, " "}
+
+    # You can change a skipper for a parser as well with `skip`
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse(" Test:\t42 ", lit("Test:") |> skip(uint(), lit(?\\t)), skipper: lit(?\\s))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, " "}
+
 
   ```
   """
