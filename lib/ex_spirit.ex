@@ -93,6 +93,27 @@ defmodule ExSpirit do
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, [42, 64], ""}
 
+    # `defrule`s can map the result to return a different one:
+    iex> import ExSpirit.Tests.Parser
+    iex> require ExSpirit
+    iex> contexts = ExSpirit.parse("42 64", testrule_map())
+    iex> {contexts.error, contexts.result, contexts.rest}
+    {nil, [2, 24], ""}
+
+    # `defrule`s can also operate over the context itself to do anything
+    iex> import ExSpirit.Tests.Parser
+    iex> require ExSpirit
+    iex> contexts = ExSpirit.parse("42 64", testrule_fun())
+    iex> {contexts.error, contexts.result, contexts.rest}
+    {nil, {"altered", [42, 64]}, ""}
+
+    # `defrule`s can also be a context function by only passing in `context`
+    iex> import ExSpirit.Tests.Parser
+    iex> require ExSpirit
+    iex> contexts = ExSpirit.parse("42 64", testrule_context())
+    iex> {contexts.error, contexts.result, contexts.rest}
+    {nil, "always success", "42 64"}
+
 
   ```
   """

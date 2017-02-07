@@ -25,33 +25,64 @@ defmodule ExSpirit.Parser do
     end
   end
 
-  # @doc """
-  #     iex> import ExSpirit.Parser
-  #     iex> defrule tester, integer(8) |> expect(double), do: IO.inspect
-  #     nil
-  # """
-  # defmacro defrule({name, _, nil}, rule_ast, opts \\ []) when is_atom(name) do
-  #   _do_ast = opts[:do] || []
-  #   IO.inspect {:RULE, name, rule_ast, opts}
-  #   rule_ast
-  # end
-  #
-  # defp process_rule_ast({func, meta, args}) when is_atom(func) do
-  #
-  # end
 
   def _no_skip(context), do: context
 
-  defmacro defrule({name, _, _}, parser_ast) when is_atom(name), do: defrule_impl(name, parser_ast)
-  defmacro defrule(name, parser_ast) when is_atom(name), do: defrule_impl(name, parser_ast)
 
-  defp defrule_impl(name, parser_ast) do
+  defmacro defrule({name, _, [parser_ast]}) when is_atom(name), do: defrule_impl(name, parser_ast, [])
+  defmacro defrule({name, _, [{:context, _, _} = context_ast]} = name_ast, do: do_ast) when is_atom(name) do
     quote location: :keep do
-      def unquote(name)(context) do
-        context |> unquote(parser_ast)
+      def unquote(name)(unquote(context_ast)) do
+        if !valid_context?(unquote(context_ast)) do
+          unquote(context_ast)
+        else
+          unquote(do_ast)
+        end
       end
     end
   end
+  defmacro defrule({name, _, [parser_ast]}, opts) when is_atom(name), do: defrule_impl(name, parser_ast, opts)
+
+  defp defrule_impl(name, parser_ast, opts) do
+    orig_context_ast = quote do orig_context end
+    context_ast = quote do context end
+    quote location: :keep do
+      def unquote(name)(unquote(orig_context_ast)) do
+        unquote(context_ast) = unquote(orig_context_ast) |> unquote(parser_ast)
+        unquote(context_ast) = unquote(defrule_impl_map(orig_context_ast, context_ast, opts[:map]))
+        unquote(context_ast) = unquote(defrule_impl_fun(context_ast, opts[:fun]))
+        unquote(context_ast)
+      end
+    end
+  end
+
+  defp defrule_impl_map(_orig_context_ast, context_ast, nil), do: context_ast
+  defp defrule_impl_map(orig_context_ast, context_ast, map_ast) do
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{error: nil} = good_context ->
+          result = good_context.result |> unquote(map_ast)
+          if Exception.exception?(result) do
+            %{unquote(orig_context_ast) | error: result}
+          else
+            %{good_context | result: result}
+          end
+        bad_context -> bad_context
+      end
+    end
+  end
+
+  defp defrule_impl_fun(context_ast, nil), do: context_ast
+  defp defrule_impl_fun(context_ast, fun_ast) do
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{error: nil} = good_context ->
+          good_context |> unquote(fun_ast)
+        bad_context -> bad_context
+      end
+    end
+  end
+
 
   defmacro __using__(_) do
     quote location: :keep do
