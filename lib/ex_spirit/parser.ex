@@ -10,7 +10,7 @@ defmodule ExSpirit.Parser do
       line: 1,
       column: 1,
       rest: "",
-      skipper: &ExSpirit.Parser._no_skip/1,
+      skipper: nil,
       result: nil,
       error: nil
       )
@@ -25,8 +25,6 @@ defmodule ExSpirit.Parser do
     end
   end
 
-
-  def _no_skip(context), do: context
 
 
   defmacro defrule({name, _, [parser_ast]}) when is_atom(name), do: defrule_impl(name, parser_ast, [])
@@ -90,8 +88,40 @@ defmodule ExSpirit.Parser do
       import ExSpirit.Parser, only: [defrule: 2]
 
 
+      defmacro parse(rest, parser, opts \\ []) do
+        filename = opts[:filename] || quote do "<unknown>" end
+        skipper = case opts[:skipper] do
+          nil -> nil
+          fun -> quote do fn context -> context |> unquote(fun) end end
+        end
+        quote location: :keep do
+          %ExSpirit.Parser.Context{
+            filename: unquote(filename),
+            skipper: unquote(skipper),
+            rest: unquote(rest),
+          } |> unquote(parser)
+        end
+      end
+
+
       def valid_context?(%{error: nil}), do: true
       def valid_context?(_), do: false
+
+
+      defmacro run_skipper(context_ast) do
+        quote location: :keep do
+          case unquote(context_ast) do
+            %{skipper: nil} = context -> context
+            %{skipper: skipper} = context ->
+              skipped_context = %{context | skipper: nil} |> skipper.()
+              %{skipped_context |
+                skipper: context.skipper,
+                result: context.result,
+                error: context.error
+              }
+          end
+        end
+      end
 
 
 
@@ -99,6 +129,7 @@ defmodule ExSpirit.Parser do
         if !valid_context?(context) do
           context
         else
+          context = run_skipper(context)
           if String.starts_with?(context.rest, literal) do
             lit_size = byte_size(literal)
             lit_bitsize = lit_size * 8
@@ -122,6 +153,7 @@ defmodule ExSpirit.Parser do
         if !valid_context?(context) do
           context
         else
+          context = run_skipper(context)
           <<first::utf8, rest::binary>> = context.rest
           lit_size = byte_size(<<first::utf8>>)
           if first === literal do
@@ -144,6 +176,7 @@ defmodule ExSpirit.Parser do
         if !valid_context?(context) do
           context
         else
+          context = run_skipper(context)
           if radix <= 10 do
             uint_10(context, radix, minDigits, maxDigits, 0, 0)
           else
