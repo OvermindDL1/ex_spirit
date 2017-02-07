@@ -30,7 +30,7 @@ defmodule ExSpirit.Parser do
 
 
   defmacro defrule({name, _, [parser_ast]}) when is_atom(name), do: defrule_impl(name, parser_ast, [])
-  defmacro defrule({name, _, [{:context, _, _} = context_ast]} = name_ast, do: do_ast) when is_atom(name) do
+  defmacro defrule({name, _, [{:context, _, _} = context_ast]}, do: do_ast) when is_atom(name) do
     quote location: :keep do
       def unquote(name)(unquote(context_ast)) do
         if !valid_context?(unquote(context_ast)) do
@@ -233,7 +233,7 @@ defmodule ExSpirit.Parser do
       end
 
       defp alt_expand(context_ast, this_ast, [next_ast | rest_ast]) do
-        quote do
+        quote location: :keep do
           unquote(this_ast) |> case do
             %{error: nil} = good_context -> good_context
             _bad_context -> unquote(context_ast) |> unquote(alt_expand(context_ast, next_ast, rest_ast))
@@ -242,6 +242,16 @@ defmodule ExSpirit.Parser do
       end
       defp alt_expand(_context_ast, this_ast, []) do
         this_ast
+      end
+
+
+      defmacro tag(context_ast, tag_ast, parser_ast) do
+        quote location: :keep do
+          case unquote(context_ast) |> unquote(parser_ast) do
+            %{error: nil} = good_context -> %{good_context | result: {unquote(tag_ast), good_context.result}}
+            bad_context -> bad_context
+          end
+        end
       end
 
     end

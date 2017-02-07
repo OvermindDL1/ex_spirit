@@ -114,6 +114,12 @@ defmodule ExSpirit do
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, "always success", "42 64"}
 
+    # `tag` can tag the output from a parser
+    iex> import ExSpirit.Tests.Parser
+    iex> context = ExSpirit.parse("ff", tag(:integer, uint(16)))
+    iex> {context.error, context.result, context.rest}
+    {nil, {:integer, 255}, ""}
+
 
   ```
   """
