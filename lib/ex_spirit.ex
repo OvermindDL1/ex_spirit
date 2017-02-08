@@ -55,9 +55,9 @@ defmodule ExSpirit do
 
     # `uint` parsing out base-16 upper-case, can be mixed too
     iex> import ExSpirit.Tests.Parser
-    iex> context = parse("FF", uint(16))
+    iex> context = parse("FFF", uint(16))
     iex> {context.error, context.result, context.rest}
-    {nil, 255, ""}
+    {nil, 4095, ""}
 
     # `seq` parses a sequence returning the return of all of them, removing nils,
     # as a list if more than one or the raw value if only one, if any fail then
@@ -143,6 +143,74 @@ defmodule ExSpirit do
     iex> context = parse(" Test:\t42 ", lit("Test:") |> skip(uint(), lit(?\\t)), skipper: lit(?\\s))
     iex> {context.error, context.result, context.rest}
     {nil, 42, " "}
+
+    # `char` can parse out any single character
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char())
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `char` can parse out any 'specific' single character as well
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char(?T))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `char` can parse out any 'specific' single character from a range too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char(?A..?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `char` can parse out any 'specific' single character from a list of
+    # characters or ranges too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char([?a..?z, ?T]))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `ignore` will run the parser but return no result
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", ignore(char([?a..?z, ?T])))
+    iex> {context.error, context.result, context.rest}
+    {nil, nil, "est"}
+
+    # `branch` is mostly for efficiency, it is useful for when you have a single
+    # parser that is then followed by a specific parser.  It takes two arguments,
+    # the first of which is the initial 'symbol' parser, the second is a map of
+    # %{value => parserFuns}, the output of the symbol parser is used to look up
+    # the value in the map, then the found parser is run.  If the symbol parser
+    # fails, or the key is not in the map, or the post-parser fails then this
+    # fails.  Because of the anonymous functions this has a slight overhead so
+    # only use this above `choice` when the amount is at least more than a few.
+    # This returns the output of the post-parser only.
+    iex> import ExSpirit.Tests.Parser
+    iex> symbol_map = %{?b => &uint(&1, 2), ?d => &uint(&1, 10), ?x => &uint(&1, 16)}
+    iex> context = parse("b101010", branch(char(), symbol_map))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+    iex> context = parse("d213478", branch(char(), symbol_map))
+    iex> {context.error, context.result, context.rest}
+    {nil, 213478, ""}
+    iex> context = parse("xe1DCf", branch(char(), symbol_map))
+    iex> {context.error, context.result, context.rest}
+    {nil, 925135, ""}
+
+    # `symbols` takes a ExSpirit.TST, which is a structure designed for fast
+    # lookups, though slow insertions, so please cache the data structure at
+    # compile-time if possible.  This `symbols` parser will take the text input
+    # stream and match it on the TST to find the longest-matching string, then
+    # it will run the parser on it like it is done in `branch`.  Similar
+    # semantics to branch otherwise.
+    iex> import ExSpirit.Tests.Parser
+    iex> alias ExSpirit.TST, as: TST
+    iex> symbol_tst = TST.new() |> TST.add_text("int", &uint(&1)) |> TST.add_text("char", &char(&1))
+    iex> context = parse("int42", symbols(symbol_tst))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+    iex> context = parse("charT", symbols(symbol_tst))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, ""}
 
 
   ```

@@ -18,7 +18,7 @@ defmodule ExSpirit.Parser do
   end
 
   defmodule ParseException do
-    defexception message: "Unknown parse error", context: %Context{}
+    defexception message: "Unknown parse error", context: %Context{}, extradata: nil
 
     def message(exc) do
       c = exc.context
@@ -89,9 +89,9 @@ defmodule ExSpirit.Parser do
   end
 
 
-  defmacro __using__(_) do
+  defmacro __using__(opts) do
+    text_use_ast = if(opts[:text], do: quote(do: use ExSpirit.Parser.Text), else: nil)
     quote location: :keep do
-      require ExSpirit
       import ExSpirit.Parser, only: [defrule: 1, defrule: 2]
 
 
@@ -128,104 +128,6 @@ defmodule ExSpirit.Parser do
               }
           end
         end
-      end
-
-
-
-      def lit(context, literal) when is_binary(literal) do
-        if !valid_context?(context) do
-          context
-        else
-          context = run_skipper(context)
-          if String.starts_with?(context.rest, literal) do
-            lit_size = byte_size(literal)
-            lit_bitsize = lit_size * 8
-            lit_chars = String.length(literal)
-            <<_::size(lit_bitsize), rest::binary>> = context.rest
-             %{context |
-              rest: rest,
-              position: context.position + lit_size,
-              column: context.column + lit_chars,
-              result: nil
-            }
-          else
-            %{context |
-              error: %ExSpirit.Parser.ParseException{message: "literal `#{literal}` did not match the input", context: context}
-            }
-          end
-        end
-      end
-
-      def lit(context, literal) when is_integer(literal) do
-        if !valid_context?(context) do
-          context
-        else
-          context = run_skipper(context)
-          <<first::utf8, rest::binary>> = context.rest
-          lit_size = byte_size(<<first::utf8>>)
-          if first === literal do
-             %{context |
-              rest: rest,
-              position: context.position + lit_size,
-              column: context.column + 1,
-              result: nil
-            }
-          else
-            %{context |
-              error: %ExSpirit.Parser.ParseException{message: "literal `#{<<literal::utf8>>}` did not match the input", context: context}
-            }
-          end
-        end
-      end
-
-
-      def uint(context, radix \\ 10, minDigits \\ 1, maxDigits \\ -1) do
-        if !valid_context?(context) do
-          context
-        else
-          context = run_skipper(context)
-          if radix <= 10 do
-            uint_10(context, radix, minDigits, maxDigits, 0, 0)
-          else
-            uint_36(context, radix, minDigits, maxDigits, 0, 0)
-          end
-        end
-      end
-
-      defp uint_10(context, _radix, minDigits, maxDigits, num, maxDigits)  do
-        %{context | result: num, position: context.position + maxDigits, column: context.column + maxDigits}
-      end
-      defp uint_10(%{rest: <<c::utf8, rest::binary>>} = context, radix, minDigits, maxDigits, num, digits) when c>=?0 and c<=?0+radix-1 do
-        uint_10(%{context|rest: rest}, radix, minDigits, maxDigits, (num*radix)+(c-?0), digits+1)
-      end
-      defp uint_10(context, _radix, minDigits, _maxDigits, num, digits) when minDigits<=digits do
-        %{context | result: num, position: context.position + digits, column: context.column + digits}
-      end
-      defp uint_10(context, radix, minDigits, _maxDigits, num, digits) when minDigits>digits do
-        %{context |
-          error: %ExSpirit.Parser.ParseException{message: "Parsing uint with radix of #{radix} had #{digits} digits but #{minDigits} minimum digits were required", context: context}
-        }
-      end
-
-      defp uint_36(context, _radix, minDigits, maxDigits, num, maxDigits)  do
-        %{context | result: num, position: context.position + maxDigits, column: context.column + maxDigits}
-      end
-      defp uint_36(%{rest: <<c::utf8, rest::binary>>} = context, radix, minDigits, maxDigits, num, digits) when (c>=?0 and c<=?0+radix-1) or (c>=?a and c<=?a+radix-11) or (c>=?A and c<=?A+radix-11) do
-        num = if c > ?9 do
-          c = if c >= ?a do c else c + (?a - ?A) end
-          (num*radix)+(c-?a+10)
-        else
-          (num*radix)+(c-?0+10)
-        end
-        uint_36(%{context|rest: rest}, radix, minDigits, maxDigits, num, digits+1)
-      end
-      defp uint_36(context, _radix, minDigits, _maxDigits, num, digits) when minDigits<=digits do
-        %{context | result: num, position: context.position + digits, column: context.column + digits}
-      end
-      defp uint_36(context, radix, minDigits, _maxDigits, num, digits) when minDigits>digits do
-        %{context |
-          error: %ExSpirit.Parser.ParseException{message: "Parsing uint with radix of #{radix} had #{digits} digits but #{minDigits} minimum digits were required", context: context}
-        }
       end
 
 
@@ -312,6 +214,36 @@ defmodule ExSpirit.Parser do
           %{return_context | skipper: context.skipper}
         end
       end
+
+      defmacro ignore(context_ast, parser_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          return_context = context |> unquote(parser_ast)
+          %{return_context | result: context.result}
+        end
+      end
+
+      defmacro branch(context_ast, parser_ast, symbol_map_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          %{} = symbol_map = unquote(symbol_map_ast)
+          case context |> unquote(parser_ast) do
+            %{error: nil, result: lookup} = lookup_context ->
+              case symbol_map[lookup] do
+                nil ->
+                  %{lookup_context |
+                    error:  %ExSpirit.Parser.ParseException{message: "Tried to branch to `#{inspect lookup}` but it was not found in the symbol_map", context: context, extradata: symbol_map},
+                  }
+                found_parser_fun ->
+                  lookup_context |> found_parser_fun.()
+              end
+            bad_context -> bad_context
+          end
+        end
+      end
+
+
+      unquote(text_use_ast)
 
     end
   end

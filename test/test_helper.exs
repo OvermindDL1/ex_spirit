@@ -1,7 +1,7 @@
 ExUnit.start()
 
 defmodule ExSpirit.Tests.Parser do
-  use ExSpirit.Parser
+  use ExSpirit.Parser, text: true
 
   defrule testrule(
     seq([ uint(), lit(?\s), uint() ])
