@@ -748,7 +748,7 @@ defmodule ExSpirit.Parser do
         quote location: :keep do
           context = unquote(context_ast)
           return_context = context |> unquote(parser_ast)
-          %{return_context | result: context.result}
+          %{return_context | result: nil}
         end
       end
 

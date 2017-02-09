@@ -73,7 +73,7 @@ end
 
 IO.puts("Input Roman Numerals and press enter: ")
 case IO.read(:line) |> RomanNumerals.from_string() do
-  %{error: nil, result: result, rest: ""} -> IO.puts("Result: #{result}")
-  %{error: nil, result: result, rest: rest} -> IO.puts("Result: #{result}\nLeftover: #{rest}")
+  %{error: nil, result: result, rest: "\n"} -> IO.puts("Result: #{inspect result}")
+  %{error: nil, result: result, rest: rest} -> IO.puts("Result: #{inspect result}\nLeftover: #{inspect rest}")
   %{error: error} -> IO.puts("#{Exception.message(error)}")
 end
