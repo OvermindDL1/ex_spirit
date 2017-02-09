@@ -5,6 +5,11 @@ defmodule ExSpirit.Mixfile do
     [app: :ex_spirit,
      version: "0.1.0",
      elixir: "~> 1.4",
+     docs: [
+        #logo: "path/to/logo.png",
+        extras: ["README.md"],
+        main: "readme",
+        ],
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
      deps: deps()]
@@ -28,6 +33,8 @@ defmodule ExSpirit.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    []
+    [
+      {:ex_doc, "~> 0.14.5", only: [:dev]},
+    ]
   end
 end

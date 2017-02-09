@@ -1,22 +1,18 @@
 defmodule ExSpirit.Parser.Text do
   @moduledoc """
-  # ExSpirit.Parser.Text
 
   ExSpirit.Parser.Text is a set of parser specifically for parsing out utf-8
   text from a binary.
 
 
-  ## Parsers
+  # Parsers
 
-
-  ### Text (UTF-8 Binaries) Parsers functionality
-
-  #### `lit`
+  ## `lit`
 
   The literal parser matches out a specific string or character, entirely
   ignoring the result and returning `nil`.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -34,7 +30,7 @@ defmodule ExSpirit.Parser.Text do
 
   ```
 
-  #### `uint`
+  ## `uint`
 
   The unsigned integer parser parses a plain number from the input with a few
   options.
@@ -49,7 +45,7 @@ defmodule ExSpirit.Parser.Text do
     and returns what it has parsed so far, if there are more number characters
     still to be parsed then they will be handled by the next parser.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -79,40 +75,10 @@ defmodule ExSpirit.Parser.Text do
 
   ```
 
-  #### <PARSER_NAME>
-
-  <PARSER_DESCRIPTION>
-
-  ##### Examples
-
-  ```elixir
-
-  ```
-
-  #### <PARSER_NAME>
-
-  <PARSER_DESCRIPTION>
-
-  ##### Examples
-
-  ```elixir
-
-  ```
-
-  #### <PARSER_NAME>
-
-  <PARSER_DESCRIPTION>
-
-  ##### Examples
-
-  ```elixir
-
-  ```
 
 
 
-
-  ### Text (UTF-8 Binaries) parsing
+  ## Text (UTF-8 Binaries) parsing
 
   ```elixir
 
@@ -141,19 +107,19 @@ defmodule ExSpirit.Parser.Text do
     iex> {context.error, context.result, context.rest}
     {nil, ?T, "est"}
 
-    # `symbols` takes a ExSpirit.TST, which is a structure designed for fast
+    # `symbols` takes a ExSpirit.TreeMap, which is a structure designed for fast
     # lookups, though slow insertions, so please cache the data structure at
     # compile-time if possible.  This `symbols` parser will take the text input
-    # stream and match it on the TST to find the longest-matching string, then
-    # it will run the parser on it like it is done in `branch`.  Similar
+    # stream and match it on the TreeMap to find the longest-matching string,
+    # then it will run the parser on it like it is done in `branch`.  Similar
     # semantics to branch otherwise.
     iex> import ExSpirit.Tests.Parser
-    iex> alias ExSpirit.TST, as: TST
-    iex> symbol_tst = TST.new() |> TST.add_text("int", &uint(&1)) |> TST.add_text("char", &char(&1))
-    iex> context = parse("int42", symbols(symbol_tst))
+    iex> alias ExSpirit.TreeMap, as: TreeMap
+    iex> symbol_TreeMap = TreeMap.new() |> TreeMap.add_text("int", &uint(&1)) |> TreeMap.add_text("char", &char(&1))
+    iex> context = parse("int42", symbols(symbol_TreeMap))
     iex> {context.error, context.result, context.rest}
     {nil, 42, ""}
-    iex> context = parse("charT", symbols(symbol_tst))
+    iex> context = parse("charT", symbols(symbol_TreeMap))
     iex> {context.error, context.result, context.rest}
     {nil, ?T, ""}
 
@@ -348,7 +314,7 @@ defmodule ExSpirit.Parser.Text do
       defp char_charrangelist_matches(c, [_ | rest]), do: char_charrangelist_matches(c, rest)
 
 
-      def symbols(context, %ExSpirit.TST{root: root}) do
+      def symbols(context, %ExSpirit.TreeMap{root: root}) do
         if !valid_context?(context) do
           context
         else

@@ -7,26 +7,75 @@ defmodule ExSpirit.Parser do
   stream) into a data structure of your own design.
 
 
-  ## Definitions
+  # Definitions
 
-  ### Terminal Parser
+  ## Terminal Parser
 
   A terminal parser is one that does not operate over any other parser, it is
   'terminal' in its location.
 
-  ### Combination Parser
+  ## Combination Parser
 
   A combination parser is one that takes a parser as an input and does something
   with it, whether that is repeating it, surrounding it, or ignoring its output
   as a few examples.
 
 
-  ## Parsers
+  # Usage
+
+  Just add `use ExSpirit.Parser` to a module to make it into a parsing module.
+
+  To add text parsing functions from the `ExSpirit.Parsing.Text` module then add
+  `text: true` to the use call.
+
+  ### Example
+
+  ```elixir
+
+    defmodule MyModule do
+      use ExSpirit.Parser, text: true
+    end
+
+  ```
+
+  ## parse
+
+  The parse function is applied to the input and a parser call, such as in:
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint())
+    iex> {context.error, context.result, context.rest}
+    {nil, nil, ""}
+
+  ```
+
+  ## Skippers
+
+  A skipper is a parser that is passed to the `:skipper` key in the `parse` call
+  that will be called at the start of every built-in terminal.  So when you
+  parse a, for example, `uint()`, then it will be like calling
+  `(skipper |> uint())` in its place.  There are a few related function as well.
+
+  ### Examples
+
+  ```elixir
+
+    # A skipper runs only once per terminal, if you want it to repeat the skipper
+    # then set the skipper up so it repeats, a good one is `repeat(lit(?\\s))` for
+    # example
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse(" 42 ", uint(), skipper: lit(?\\s))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, " "}
+
+  ```
 
 
-  ### All Parsers functionality
+  # Parsers
 
-  #### Elixir Standard Pipe Operator `|>`
+  ## Elixir Standard Pipe Operator |>
 
   The `|>` pipe operator can be used to run a parser, and then another parser,
   however it will only return the result of the last parser in the pipe chain.
@@ -34,7 +83,7 @@ defmodule ExSpirit.Parser do
   This library does *not* override Elixir's pipe operator, it uses it verbatum.
   Use `seq` for the usual expected sequence parsing.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -53,7 +102,7 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `seq`
+  ## seq
 
   The Sequence operator runs all of the parsers in the inline list (cannot be a
   variable) and returns their results as a list.  Any `nil`'s returned are not
@@ -61,7 +110,7 @@ defmodule ExSpirit.Parser do
   returned then it returns that value straight away without being wrapped in a
   list.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -81,13 +130,13 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `alt``
+  ## alt
 
   The alternative parser runs the parsers in the inline list (cannot be a
   variable) and returns the result of the first one that succeeds, or the error
   of the last one.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -105,14 +154,14 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `defrule`
+  ## defrule
 
   Defining a rule defines a parser as well as some associated information such
   as the name of it for error reporting purposes, a mapping function so you can
   convert the output on the fly (fantastic for in-line AST generation for
   example!), among other uses.  It is used like any other normal terminal rule.
 
-  ##### Examples
+  ### Examples
 
   All of the following examples use this definition of rules in a module:
 
@@ -176,33 +225,12 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### Skippers
-
-  A skipper is a parser that is passed to the `:skipper` key in the `parse` call
-  that will be called at the start of every built-in terminal.  So when you
-  parse a, for example, `uint()`, then it will be like calling
-  `(skipper |> uint())` in its place.  There are a few related function as well.
-
-  ##### Examples
-
-  ```elixir
-
-    # A skipper runs only once per terminal, if you want it to repeat the skipper
-    # then set the skipper up so it repeats, a good one is `repeat(lit(?\\s))` for
-    # example
-    iex> import ExSpirit.Tests.Parser
-    iex> context = parse(" 42 ", uint(), skipper: lit(?\\s))
-    iex> {context.error, context.result, context.rest}
-    {nil, 42, " "}
-
-  ```
-
-  #### `no_skip`
+  ## no_skip
 
   The `no_skip` combination parser takes a parser and clears the skipper so they
   do no skipping.  Good to parse non-skippable content within a large parser.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -214,12 +242,12 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `skipper`
+  ## skipper
 
   The `skipper` combination parser takes a parser and changes the skipper within
   it to the one you pass in for the duration of the parser that you pass in.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -231,12 +259,12 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `ignore`
+  ## ignore
 
   The `ignore` combination parser takes and runs a parser but ignores the
   result of the parser, instead returning `nil`.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -248,7 +276,7 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `branch`
+  ## branch
 
   The `branch` combination parser is designed for efficient branching based on
   the result from another parser.  It allows you to parse something, and using
@@ -268,7 +296,7 @@ defmodule ExSpirit.Parser do
   This returns only the output from the parser in the map, not the lookup
   parser.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -309,13 +337,13 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `tag`
+  ## tag
 
   The tagger combination parser will wrap the result of the passed in parser in
   a standard erlang 2-tuple, the first element is the tag that you pass in, the
   second is the result of the parser.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -327,7 +355,7 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `expect`
+  ### Expect
 
   The expectation parser takes a parser but if it fails then it returns a hard
   error that will prevent further parsers, even in branch tests, from running.
@@ -338,7 +366,7 @@ defmodule ExSpirit.Parser do
   with an error message related to the proper place the parse failed instead of
   trying other parsers that you know will not succeed anyway.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -368,7 +396,7 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `repeat`
+  ## repeat
 
   The repeat parser repeats over a parser for bounded number of times, returning
   the results as a list.  It does have a slight overhead compared to known
@@ -378,7 +406,7 @@ defmodule ExSpirit.Parser do
   The optional arguments are the minimum number of repeats required, default of
   0, and the maximum number of repeats, default of -1 (infinite).
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 
@@ -414,13 +442,13 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### `repeatFn`
+  ## repeatFn
 
   The repeat function parser allows you to pass in a parser function to repeat
   over, but is otherwise identical to `repeat`, especially as `repeat` delegates
   to `repeatFn`.
 
-  ##### Examples
+  ### Examples
 
   ```elixir
 

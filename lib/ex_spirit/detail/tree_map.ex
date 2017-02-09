@@ -1,4 +1,4 @@
-defmodule ExSpirit.TST do
+defmodule ExSpirit.TreeMap do
 
   defstruct root: %{}
 
