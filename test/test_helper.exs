@@ -1,5 +1,18 @@
 ExUnit.start()
 
+# Documentation template
+_ = """
+  #### <PARSER_NAME>
+
+  <PARSER_DESCRIPTION>
+
+  ##### Examples
+
+  ```elixir
+
+  ```
+"""
+
 defmodule ExSpirit.Tests.Parser do
   use ExSpirit.Parser, text: true
 

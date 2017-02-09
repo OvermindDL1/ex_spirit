@@ -1,4 +1,165 @@
 defmodule ExSpirit.Parser.Text do
+  @moduledoc """
+  # ExSpirit.Parser.Text
+
+  ExSpirit.Parser.Text is a set of parser specifically for parsing out utf-8
+  text from a binary.
+
+
+  ## Parsers
+
+
+  ### Text (UTF-8 Binaries) Parsers functionality
+
+  #### `lit`
+
+  The literal parser matches out a specific string or character, entirely
+  ignoring the result and returning `nil`.
+
+  ##### Examples
+
+  ```elixir
+
+    # `lit` matches a specific string or character
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test 42", lit("Test"))
+    iex> {context.error, context.result, context.rest}
+    {nil, nil, " 42"}
+
+    # `lit` matches a specific string or character
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test 42", lit(?T))
+    iex> {context.error, context.result, context.rest}
+    {nil, nil, "est 42"}
+
+  ```
+
+  #### `uint`
+
+  The unsigned integer parser parses a plain number from the input with a few
+  options.
+
+  - The first argument is the radix, defaults to 10, everything from 2 to 36 is
+    supported.
+  - The second argument is the minimum character count, defaults 1, valid at 1+.
+    If the characters able to be parsed as a number is less than this value then
+    the parser fails.
+  - The third argument is the maximum character count, defaults -1 (unlimited),
+    valid values are -1, or 1+.  It stops parsing at this amount of characters
+    and returns what it has parsed so far, if there are more number characters
+    still to be parsed then they will be handled by the next parser.
+
+  ##### Examples
+
+  ```elixir
+
+    # `uint` parses out an unsigned integer, default radix of 10 with a min size of 1 and max of unlimited
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint())
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+
+    # `uint` parsing out base-2
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("101", uint(2))
+    iex> {context.error, context.result, context.rest}
+    {nil, 5, ""}
+
+    # `uint` parsing out base-16 lower-case, can be mixed too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("ff", uint(16))
+    iex> {context.error, context.result, context.rest}
+    {nil, 255, ""}
+
+    # `uint` parsing out base-16 upper-case, can be mixed too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("FFF", uint(16))
+    iex> {context.error, context.result, context.rest}
+    {nil, 4095, ""}
+
+  ```
+
+  #### <PARSER_NAME>
+
+  <PARSER_DESCRIPTION>
+
+  ##### Examples
+
+  ```elixir
+
+  ```
+
+  #### <PARSER_NAME>
+
+  <PARSER_DESCRIPTION>
+
+  ##### Examples
+
+  ```elixir
+
+  ```
+
+  #### <PARSER_NAME>
+
+  <PARSER_DESCRIPTION>
+
+  ##### Examples
+
+  ```elixir
+
+  ```
+
+
+
+
+  ### Text (UTF-8 Binaries) parsing
+
+  ```elixir
+
+    # `char` can parse out any single character
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char())
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `char` can parse out any 'specific' single character as well
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char(?T))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `char` can parse out any 'specific' single character from a range too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char(?A..?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `char` can parse out any 'specific' single character from a list of
+    # characters or ranges too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char([?a..?z, ?T]))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # `symbols` takes a ExSpirit.TST, which is a structure designed for fast
+    # lookups, though slow insertions, so please cache the data structure at
+    # compile-time if possible.  This `symbols` parser will take the text input
+    # stream and match it on the TST to find the longest-matching string, then
+    # it will run the parser on it like it is done in `branch`.  Similar
+    # semantics to branch otherwise.
+    iex> import ExSpirit.Tests.Parser
+    iex> alias ExSpirit.TST, as: TST
+    iex> symbol_tst = TST.new() |> TST.add_text("int", &uint(&1)) |> TST.add_text("char", &char(&1))
+    iex> context = parse("int42", symbols(symbol_tst))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+    iex> context = parse("charT", symbols(symbol_tst))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, ""}
+
+
+  ```
+  """
 
   defmacro __using__(_) do
     quote location: :keep do
