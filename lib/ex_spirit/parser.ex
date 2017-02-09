@@ -47,7 +47,7 @@ defmodule ExSpirit.Parser do
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42", uint())
     iex> {context.error, context.result, context.rest}
-    {nil, nil, ""}
+    {nil, 42, ""}
 
   ```
 

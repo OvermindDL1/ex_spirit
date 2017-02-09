@@ -5,6 +5,7 @@ defmodule ExSpirit.Mixfile do
     [app: :ex_spirit,
      version: "0.1.0",
      elixir: "~> 1.4",
+     package: package(),
      docs: [
         #logo: "path/to/logo.png",
         extras: ["README.md"],
@@ -15,23 +16,19 @@ defmodule ExSpirit.Mixfile do
      deps: deps()]
   end
 
-  # Configuration for the OTP application
-  #
-  # Type "mix help compile.app" for more information
   def application do
-    # Specify extra applications you'll use from Erlang/Elixir
-    [extra_applications: [:logger]]
+    [extra_applications: []]
   end
 
-  # Dependencies can be Hex packages:
-  #
-  #   {:my_dep, "~> 0.3.0"}
-  #
-  # Or git/path repositories:
-  #
-  #   {:my_dep, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
-  #
-  # Type "mix help deps" for more examples and options
+  def package do
+    [
+      licenses: ["MIT"],
+      name: :ex_spirit,
+      maintainers: ["OvermindDL1"],
+      links: %{"Github" => "https://github.com/OvermindDL1/ex_spirit"}
+    ]
+  end
+
   defp deps do
     [
       {:ex_doc, "~> 0.14.5", only: [:dev]},
