@@ -439,6 +439,11 @@ defmodule ExSpirit.Parser do
     iex> {context.error.message, context.result, context.rest}
     {"Repeating over a parser failed due to not reaching the minimum amount of 4 with only a repeat count of 3", nil, ""}
 
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("", repeat(char(?T)))
+    iex> {context.error.message, context.result, context.rest}
+    {nil, [], ""}
+
   ```
 
   ## repeatFn
@@ -804,7 +809,7 @@ defmodule ExSpirit.Parser do
           %{error: nil, result: result} = good_context -> repeatFn(good_context, parser, minimum, maximum, [result | results], count + 1)
           %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
           bad_context ->
-            if minimum < count do
+            if minimum <= count do
               %{context |
                 result: :lists.reverse(results),
               }
