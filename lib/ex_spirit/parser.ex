@@ -341,13 +341,68 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  #### <PARSER_NAME>
+  #### `repeat`
 
-  <PARSER_DESCRIPTION>
+  The repeat parser repeats over a parser for bounded number of times, returning
+  the results as a list.  It does have a slight overhead compared to known
+  execution times due to an anonmous function call, but that is necessary when
+  performing a dynamic number of repetitions without mutable variables.
+
+  The optional arguments are the minimum number of repeats required, default of
+  0, and the maximum number of repeats, default of -1 (infinite).
 
   ##### Examples
 
   ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTTX", repeat(char(?T)))
+    iex> {context.error, context.result, context.rest}
+    {nil, [?T, ?T, ?T], "X"}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTTX", repeat(char(?T), 1))
+    iex> {context.error, context.result, context.rest}
+    {nil, [?T, ?T, ?T], "X"}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTTX", repeat(char(?T), 1, 10))
+    iex> {context.error, context.result, context.rest}
+    {nil, [?T, ?T, ?T], "X"}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTTX", repeat(char(?T), 1, 2))
+    iex> {context.error, context.result, context.rest}
+    {nil, [?T, ?T], "TX"}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTTX", repeat(char(?T), 4))
+    iex> {context.error.message, context.result, context.rest}
+    {"Repeating over a parser failed due to not reaching the minimum amount of 4 with only a repeat count of 3", nil, "X"}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTT", repeat(char(?T), 4))
+    iex> {context.error.message, context.result, context.rest}
+    {"Repeating over a parser failed due to not reaching the minimum amount of 4 with only a repeat count of 3", nil, ""}
+
+  ```
+
+  #### `repeatFn`
+
+  The repeat function parser allows you to pass in a parser function to repeat
+  over, but is otherwise identical to `repeat`, especially as `repeat` delegates
+  to `repeatFn`.
+
+  ##### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TTTX", repeatFn(fn c -> c |> char(?T) end))
+    iex> {context.error, context.result, context.rest}
+    {nil, [?T, ?T, ?T], "X"}
+
+    # See `repeat` for more.
 
   ```
   """
@@ -389,6 +444,7 @@ defmodule ExSpirit.Parser do
 
     def makeContextFailed(%{error: %{message: message, context: context, extradata: extradata}} = bad_context) do
       %{bad_context |
+        result: nil,
         error: %__MODULE__{
           message: message,
           context: context,
@@ -399,6 +455,7 @@ defmodule ExSpirit.Parser do
 
     def makeContextFailed(%{error: %{message: message} = exc} = bad_context) do
       %{bad_context |
+        result: nil,
         error: %__MODULE__{
           message: message,
           context: bad_context,
@@ -409,6 +466,7 @@ defmodule ExSpirit.Parser do
 
     def makeContextFailed(%{error: error} = bad_context) do
       %{bad_context |
+        result: nil,
         error: %__MODULE__{
           message: inspect(error),
           context: bad_context,
@@ -629,6 +687,7 @@ defmodule ExSpirit.Parser do
               case symbol_map[lookup] do
                 nil ->
                   %{lookup_context |
+                    result: nil,
                     error:  %ExSpirit.Parser.ParseException{message: "Tried to branch to `#{inspect lookup}` but it was not found in the symbol_map", context: context, extradata: symbol_map},
                   }
                 found_parser_fun ->
@@ -647,6 +706,39 @@ defmodule ExSpirit.Parser do
             %{error: nil} = good_context -> good_context
             bad_context -> ExSpirit.Parser.ExpectationFailureException.makeContextFailed(bad_context)
           end
+        end
+      end
+
+
+      defmacro repeat(context_ast, parser_ast, minimum \\ 0, maximum \\ -1) do
+        quote location: :keep do
+          unquote(context_ast) |> repeatFn(fn(c) -> c |> unquote(parser_ast) end, unquote(minimum), unquote(maximum))
+        end
+      end
+
+      def repeatFn(context, parser, minimum \\ 0, maximum \\ -1) when is_function(parser, 1) do
+        repeatFn(context, parser, minimum, maximum, [], 0)
+      end
+      defp repeatFn(context, _parser, _minimum, maximum, results, maximum) do
+        %{context |
+          result: :lists.reverse(results),
+        }
+      end
+      defp repeatFn(context, parser, minimum, maximum, results, count) do
+        case context |> parser.() do
+          %{error: nil, result: result} = good_context -> repeatFn(good_context, parser, minimum, maximum, [result | results], count + 1)
+          %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
+          bad_context ->
+            if minimum < count do
+              %{context |
+                result: :lists.reverse(results),
+              }
+            else
+              %{bad_context |
+                result: nil,
+                error:  %ExSpirit.Parser.ParseException{message: "Repeating over a parser failed due to not reaching the minimum amount of #{minimum} with only a repeat count of #{count}", context: context, extradata: count},
+              }
+            end
         end
       end
 
