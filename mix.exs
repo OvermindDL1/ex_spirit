@@ -5,6 +5,7 @@ defmodule ExSpirit.Mixfile do
     [app: :ex_spirit,
      version: "0.1.0",
      elixir: "~> 1.4",
+     description: description(),
      package: package(),
      docs: [
         #logo: "path/to/logo.png",
@@ -18,6 +19,12 @@ defmodule ExSpirit.Mixfile do
 
   def application do
     [extra_applications: []]
+  end
+
+  def description do
+    """
+    Spirit-style PEG-like parsing library for Elixir.
+    """
   end
 
   def package do
