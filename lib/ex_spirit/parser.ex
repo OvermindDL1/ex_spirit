@@ -252,14 +252,18 @@ defmodule ExSpirit.Parser do
 
   The `branch` combination parser is designed for efficient branching based on
   the result from another parser.  It allows you to parse something, and using
-  the result of that parser to look up that value in a map that returns a new
-  parser that will then be run.  It takes two arguments, the first of which is
-  the initial parser, the second is a map of `values => parserFun` where the
-  value key is looked up from the result of the first parser, and the parserFun
-  that is returned is then ran.  Because of the function calls this has a slight
-  overhead so only use this if switching parsers dynamically based on a parsed
-  value that is more complex then a simple `alt` parser or the count is more
-  than a few branches in size.
+  the result of that parser you can then either lookup the value in a map or
+  call into a user function, either of which can return a parser function that
+  will then be used to continue parsing.
+
+  It takes two arguments, the first of which is the initial parser, the second
+  is either a user function of `value -> parserFn` or a map of
+  `values => parserFn` where the value key is looked up from the result of the
+  first parser.  If the parserFn is `nil` then `branch` fails, else the parserFn
+  is executed to continue parsing.  Because of the anonymous function calls this
+  has a slight overhead so only use this if switching parsers dynamically based
+  on a parsed value that is more complex then a simple `alt` parser or the count
+  is more than a few branches in size.
 
   This returns only the output from the parser in the map, not the lookup
   parser.
@@ -279,6 +283,29 @@ defmodule ExSpirit.Parser do
     iex> context = parse("xe1DCf", branch(char(), symbol_map))
     iex> {context.error, context.result, context.rest}
     {nil, 925135, ""}
+    iex> context = parse("a", branch(char(), symbol_map))
+    iex> {context.error.message, context.result, context.rest}
+    {"Tried to branch to `97` but it was not found in the symbol_map", nil, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> symbol_mapper = fn
+    iex>   ?b -> &uint(&1, 2)
+    iex>   ?d -> &uint(&1, 10)
+    iex>   ?x -> &uint(&1, 16)
+    iex>   _value -> nil # Always have a default case.  :-)
+    iex> end
+    iex> context = parse("b101010", branch(char(), symbol_mapper))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+    iex> context = parse("d213478", branch(char(), symbol_mapper))
+    iex> {context.error, context.result, context.rest}
+    {nil, 213478, ""}
+    iex> context = parse("xe1DCf", branch(char(), symbol_mapper))
+    iex> {context.error, context.result, context.rest}
+    {nil, 925135, ""}
+    iex> context = parse("a", branch(char(), symbol_mapper))
+    iex> {context.error.message, context.result, context.rest}
+    {"Tried to branch to `97` but it was not found in the symbol_map", nil, ""}
 
   ```
 
@@ -681,10 +708,15 @@ defmodule ExSpirit.Parser do
       defmacro branch(context_ast, parser_ast, symbol_map_ast) do
         quote location: :keep do
           context = unquote(context_ast)
-          %{} = symbol_map = unquote(symbol_map_ast)
+          symbol_map = unquote(symbol_map_ast)
           case context |> unquote(parser_ast) do
             %{error: nil, result: lookup} = lookup_context ->
-              case symbol_map[lookup] do
+              if is_function(symbol_map, 1) do
+                symbol_map.(lookup)
+              else
+                symbol_map[lookup]
+              end
+              |> case do
                 nil ->
                   %{lookup_context |
                     result: nil,
