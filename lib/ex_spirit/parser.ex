@@ -1,6 +1,5 @@
 defmodule ExSpirit.Parser do
   @moduledoc """
-  # ExSpirit.Parser
 
   ExSpirit.Parser is the parsing section of ExSpirit, designed to parse out some
   kind of stream of data (whether via a binary, a list, or perhaps an actual
@@ -460,6 +459,22 @@ defmodule ExSpirit.Parser do
     # See `repeat` for more.
 
   ```
+
+  ## success
+
+  The success parser always returns the passed in value, default of nil,
+  successfully like a parsed value.
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("", success(42))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+
+  ```
   """
 
   defmodule Context do
@@ -799,6 +814,17 @@ defmodule ExSpirit.Parser do
                 error:  %ExSpirit.Parser.ParseException{message: "Repeating over a parser failed due to not reaching the minimum amount of #{minimum} with only a repeat count of #{count}", context: context, extradata: count},
               }
             end
+        end
+      end
+
+
+      def success(context, value \\ nil) do
+        if !valid_context?(context) do
+          context
+        else
+          %{context |
+            result: value
+          }
         end
       end
 

@@ -111,8 +111,8 @@ defmodule ExSpirit.Parser.Text do
     # lookups, though slow insertions, so please cache the data structure at
     # compile-time if possible.  This `symbols` parser will take the text input
     # stream and match it on the TreeMap to find the longest-matching string,
-    # then it will run the parser on it like it is done in `branch`.  Similar
-    # semantics to branch otherwise.
+    # then it will take the return value, if a function then it will run it as
+    # as parserFn, else it will return it as a value
     iex> import ExSpirit.Tests.Parser
     iex> alias ExSpirit.TreeMap, as: TreeMap
     iex> symbol_TreeMap = TreeMap.new() |> TreeMap.add_text("int", &uint(&1)) |> TreeMap.add_text("char", &char(&1))
@@ -122,6 +122,31 @@ defmodule ExSpirit.Parser.Text do
     iex> context = parse("charT", symbols(symbol_TreeMap))
     iex> {context.error, context.result, context.rest}
     {nil, ?T, ""}
+    iex> context = parse("in", symbols(symbol_TreeMap))
+    iex> {String.starts_with?(context.error.message, "Tried matching out symbols and got to `i` but failed"), context.result, context.rest}
+    {true, nil, "in"}
+    iex> context = parse("", symbols(symbol_TreeMap))
+    iex> {String.starts_with?(context.error.message, "Tried matching out symbols and got the end of the line but failed to find a value"), context.result, context.rest}
+    {true, nil, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> alias ExSpirit.TreeMap, as: TreeMap
+    iex> symbol_TreeMap = TreeMap.new() |> TreeMap.add_text("let", 1) |> TreeMap.add_text("letmap", 2) |> TreeMap.add_text("", 0)
+    iex> context = parse("", symbols(symbol_TreeMap))
+    iex> {context.error, context.result, context.rest}
+    {nil, 0, ""}
+    iex> context = parse("A", symbols(symbol_TreeMap))
+    iex> {context.error, context.result, context.rest}
+    {nil, 0, "A"}
+    iex> context = parse("let", symbols(symbol_TreeMap))
+    iex> {context.error, context.result, context.rest}
+    {nil, 1, ""}
+    iex> context = parse("letmap", symbols(symbol_TreeMap))
+    iex> {context.error, context.result, context.rest}
+    {nil, 2, ""}
+    iex> context = parse("letma", symbols(symbol_TreeMap))
+    iex> {context.error, context.result, context.rest}
+    {nil, 1, "ma"}
 
 
   ```
@@ -324,6 +349,20 @@ defmodule ExSpirit.Parser.Text do
         end
       end
 
+      defp symbols_(%{rest: ""} = context, map) do
+        case map[[]] do
+          nil ->
+            %{context |
+              error: %ExSpirit.Parser.ParseException{message: "Tried matching out symbols and got the end of the line but failed to find a value in `#{inspect map}`", context: context},
+            }
+          parser when is_function(parser, 1) ->
+            context |> parser.()
+          value ->
+            %{context |
+              result: value,
+            }
+        end
+      end
       defp symbols_(%{rest: <<c::utf8, rest::binary>>} = context, map) do
         case map[c] do
           nil ->
@@ -332,12 +371,19 @@ defmodule ExSpirit.Parser.Text do
                 %{context |
                   error: %ExSpirit.Parser.ParseException{message: "Tried matching out symbols and got to `#{<<c::utf8>>}` but failed to find it in `#{inspect map}`", context: context},
                 }
-              parser ->
+              parser when is_function(parser, 1) ->
                 %{context |
                   position: context.position + byte_size(<<c::utf8>>),
                   column: if(c===?\n, do: 1, else: context.column+1),
                   line: context.line + if(c===?\n, do: 1, else: 0),
                 } |> parser.()
+              value ->
+                %{context |
+                  position: context.position + byte_size(<<c::utf8>>),
+                  column: if(c===?\n, do: 1, else: context.column+1),
+                  line: context.line + if(c===?\n, do: 1, else: 0),
+                  result: value,
+                }
             end
           submap ->
             %{context |
@@ -346,6 +392,29 @@ defmodule ExSpirit.Parser.Text do
               column: if(c===?\n, do: 1, else: context.column+1),
               line: context.line + if(c===?\n, do: 1, else: 0),
             } |> symbols_(submap)
+            |> case do
+              %{error: nil} = good_context -> good_context
+              bad_context -> # Does this level have a value then?
+                case map[[]] do
+                  nil ->
+                    %{context |
+                      error: %ExSpirit.Parser.ParseException{message: "Tried matching out symbols and got to `#{<<c::utf8>>}` but failed to find a longest match in `#{inspect map}`", context: context},
+                    }
+                  parser when is_function(parser, 1) ->
+                    %{context |
+                      position: context.position + byte_size(<<c::utf8>>),
+                      column: if(c===?\n, do: 1, else: context.column+1),
+                      line: context.line + if(c===?\n, do: 1, else: 0),
+                    } |> parser.()
+                  value ->
+                    %{context |
+                      position: context.position + byte_size(<<c::utf8>>),
+                      column: if(c===?\n, do: 1, else: context.column+1),
+                      line: context.line + if(c===?\n, do: 1, else: 0),
+                      result: value,
+                    }
+                end
+            end
         end
       end
 
