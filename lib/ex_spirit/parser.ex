@@ -834,6 +834,18 @@ defmodule ExSpirit.Parser do
       end
 
 
+      def fail(context, reason) do
+        if !valid_context?(context) do
+          context
+        else
+          %{context |
+            result: nil,
+            error:  %ExSpirit.Parser.ParseException{message: "Fail parser called with user reason of: #{inspect reason}", context: context, extradata: reason},
+          }
+        end
+      end
+
+
       unquote(text_use_ast)
 
     end
