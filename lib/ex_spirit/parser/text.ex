@@ -141,6 +141,19 @@ defmodule ExSpirit.Parser.Text do
     iex> {String.starts_with?(context.error.message, "Tried parsing out any of the the characters of"), context.result, context.rest}
     {true, nil, "Rest"}
 
+    # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TEST42", chars(?A..?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, "TEST", "42"}
+
+    # `chars` parser is like char but it parses all matching as a binary, can
+    # also take an initial single-char matcher
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("_TEST42", chars(?_, ?A..?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, "_TEST", "42"}
+
     # `symbols` takes a ExSpirit.TreeMap, which is a structure designed for fast
     # lookups, though slow insertions, so please cache the data structure at
     # compile-time if possible.  This `symbols` parser will take the text input
@@ -347,17 +360,92 @@ defmodule ExSpirit.Parser.Text do
         end
       end
 
-      defp char_charrangelist_matches(c, matchers, defaultValue \\ false)
-      defp char_charrangelist_matches(c, [], defaultValue), do: defaultValue
-      defp char_charrangelist_matches(c, [c | rest], defaultValue), do: true
-      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first<=last and c>=first and c<=last, do: true
-      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first>=last and c<=first and c>=last, do: true
-      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first<=last and -c>=first and -c<=last, do: false
-      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first>=last and -c<=first and -c>=last, do: false
-      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first<0 or last<0, do: char_charrangelist_matches(c, rest, true)
-      defp char_charrangelist_matches(c, [d | rest], defaultValue) when -c === d, do: false
-      defp char_charrangelist_matches(c, [d | rest], defaultValue) when d<0, do: char_charrangelist_matches(c, rest, true)
-      defp char_charrangelist_matches(c, [_ | rest], defaultValue), do: char_charrangelist_matches(c, rest, defaultValue)
+      def char_charrangelist_matches(c, matchers, defaultValue \\ false)
+      def char_charrangelist_matches(c, c, _defaultValue), do: true
+      def char_charrangelist_matches(c, first..last, _defaultValue) when first<=last and c>=first and c<=last, do: true
+      def char_charrangelist_matches(c, first..last, _defaultValue) when first>=last and c<=first and c>=last, do: true
+      def char_charrangelist_matches(c, first..last, _defaultValue) when first<=last and -c>=first and -c<=last, do: true
+      def char_charrangelist_matches(c, first..last, _defaultValue) when first>=last and -c<=first and -c>=last, do: true
+      def char_charrangelist_matches(c, [], defaultValue), do: defaultValue
+      def char_charrangelist_matches(c, [c | rest], _defaultValue), do: true
+      def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first<=last and c>=first and c<=last, do: true
+      def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first>=last and c<=first and c>=last, do: true
+      def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first<=last and -c>=first and -c<=last, do: false
+      def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first>=last and -c<=first and -c>=last, do: false
+      def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first<0 or last<0, do: char_charrangelist_matches(c, rest, true)
+      def char_charrangelist_matches(c, [d | rest], defaultValue) when -c === d, do: false
+      def char_charrangelist_matches(c, [d | rest], defaultValue) when d<0, do: char_charrangelist_matches(c, rest, true)
+      def char_charrangelist_matches(c, [_ | rest], defaultValue), do: char_charrangelist_matches(c, rest, defaultValue)
+      def char_charrangelist_matches(c, _d, defaultValue), do: defaultValue
+
+
+      def chars_increment_while_matching("", position, column, line, _matchers), do: {position, column, line}
+      def chars_increment_while_matching(matchers, <<c::utf8, rest::binary>>, position, column, line) do
+        if char_charrangelist_matches(c, matchers) do
+          if c == ?\n do
+            chars_increment_while_matching(matchers, rest, position+byte_size(<<c::utf8>>), 1, line+1)
+          else
+            chars_increment_while_matching(matchers, rest, position+byte_size(<<c::utf8>>), column+1, line)
+          end
+        else
+          {position, column, line}
+        end
+      end
+
+      defmacro chars(context_ast, matchers_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          matchers = unquote(matchers_ast)
+          if !valid_context?(context) do
+            context
+          else
+            context = run_skipper(context)
+            {position, column, line} = chars_increment_while_matching(matchers, context.rest, 0, context.column, context.line)
+            <<result::binary-size(position), result_rest::binary>> = context.rest
+            %{context |
+              result: result,
+              rest: result_rest,
+              position: context.position + position,
+              column: column,
+              line: line,
+            }
+          end
+        end
+      end
+
+      defmacro chars(context_ast, firstMatcher_ast, matchers_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          firstMatcher = unquote(firstMatcher_ast)
+          matchers = unquote(matchers_ast)
+          if !valid_context?(context) do
+            context
+          else
+            case run_skipper(context) do
+              %{rest: <<c::utf8, rest::binary>>} = first_matched_context ->
+                if char_charrangelist_matches(c, firstMatcher) do
+                  {position, column, line} = chars_increment_while_matching(matchers, rest, byte_size(<<c::utf8>>), if(c===?\n, do: 1, else: first_matched_context.column+1), first_matched_context.line + if(c===?\n, do: 1, else: 0))
+                  <<result::binary-size(position), result_rest::binary>> = first_matched_context.rest
+                  %{first_matched_context |
+                    result: result,
+                    rest: result_rest,
+                    position: first_matched_context.position + position,
+                    column: column,
+                    line: line,
+                  }
+                else
+                  %{first_matched_context |
+                    error: %ExSpirit.Parser.ParseException{message: "Tried parsing out any of the the characters of `#{inspect firstMatcher}` but failed due to the input character not matching", context: context},
+                  }
+                end
+              bad_context ->
+                %{bad_context |
+                  error: %ExSpirit.Parser.ParseException{message: "Tried parsing out any of the the characters of `#{inspect firstMatcher}` but failed due to end of input", context: context},
+                }
+            end
+          end
+        end
+      end
 
 
       def symbols(context, %ExSpirit.TreeMap{root: root}) do
