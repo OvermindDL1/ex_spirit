@@ -94,11 +94,25 @@ defmodule ExSpirit.Parser.Text do
     iex> {context.error, context.result, context.rest}
     {nil, ?T, "est"}
 
+    # `char` can parse out anything 'but' a 'specific' single character too,
+    # just negate it, don't mix positive and negative matchers in the same set
+    # unless there is only one negative matcher and it is at the end of the list
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Nope", char(-?T))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?N, "ope"}
+
     # `char` can parse out any 'specific' single character from a range too
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test", char(?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, ?T, "est"}
+
+    # `char` can parse out any but a 'specific' single character from a range
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", char(-?A..-?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?4, "2"}
 
     # `char` can parse out any 'specific' single character from a list of
     # characters or ranges too
@@ -106,6 +120,26 @@ defmodule ExSpirit.Parser.Text do
     iex> context = parse("Test", char([?a..?z, ?T]))
     iex> {context.error, context.result, context.rest}
     {nil, ?T, "est"}
+
+    # `char` can parse out any but a 'specific' single character from a list of
+    # characters or ranges too
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", char([?a..?z, -?T]))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?4, "2"}
+
+    # a mixed list is fine if the negated ones are at the end of it, only
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Test", char([?a..?z, ?T, -?A..-?Z]))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?T, "est"}
+
+    # a mixed list is fine if the negated ones are at the end of it, only,
+    # here is how a failure looks
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("Rest", char([?a..?z, ?T, -?A..-?Z]))
+    iex> {String.starts_with?(context.error.message, "Tried parsing out any of the the characters of"), context.result, context.rest}
+    {true, nil, "Rest"}
 
     # `symbols` takes a ExSpirit.TreeMap, which is a structure designed for fast
     # lookups, though slow insertions, so please cache the data structure at
@@ -280,26 +314,7 @@ defmodule ExSpirit.Parser.Text do
       end
 
       # Parse out a single character
-      def char(context, c) when is_integer(c) do
-        if !valid_context?(context) do
-          context
-        else
-          case run_skipper(context) do
-            %{rest: <<^c::utf8, rest::binary>>} = good_context ->
-              %{good_context |
-                result: c,
-                rest: rest,
-                position: good_context.position + byte_size(<<c::utf8>>),
-                column: if(c===?\n, do: 1, else: good_context.column+1),
-                line: good_context.line + if(c===?\n, do: 1, else: 0),
-              }
-            bad_context ->
-              %{bad_context |
-                error: %ExSpirit.Parser.ParseException{message: "Tried parsing out the character `#{<<c::utf8>>}` but failed due to no match", context: context},
-              }
-          end
-        end
-      end
+      def char(context, c) when is_integer(c), do: char(context, [c])
 
       # Parse out a single character from a range of characters
       def char(context, _.._ = rangeMatcher), do: char(context, [rangeMatcher])
@@ -332,11 +347,17 @@ defmodule ExSpirit.Parser.Text do
         end
       end
 
-      defp char_charrangelist_matches(c, []), do: false
-      defp char_charrangelist_matches(c, [c | rest]), do: true
-      defp char_charrangelist_matches(c, [first..last | rest]) when first<=last and c>=first and c<=last, do: true
-      defp char_charrangelist_matches(c, [first..last | rest]) when first>=last and c<=first and c>=last, do: true
-      defp char_charrangelist_matches(c, [_ | rest]), do: char_charrangelist_matches(c, rest)
+      defp char_charrangelist_matches(c, matchers, defaultValue \\ false)
+      defp char_charrangelist_matches(c, [], defaultValue), do: defaultValue
+      defp char_charrangelist_matches(c, [c | rest], defaultValue), do: true
+      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first<=last and c>=first and c<=last, do: true
+      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first>=last and c<=first and c>=last, do: true
+      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first<=last and -c>=first and -c<=last, do: false
+      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first>=last and -c<=first and -c>=last, do: false
+      defp char_charrangelist_matches(c, [first..last | rest], defaultValue) when first<0 or last<0, do: char_charrangelist_matches(c, rest, true)
+      defp char_charrangelist_matches(c, [d | rest], defaultValue) when -c === d, do: false
+      defp char_charrangelist_matches(c, [d | rest], defaultValue) when d<0, do: char_charrangelist_matches(c, rest, true)
+      defp char_charrangelist_matches(c, [_ | rest], defaultValue), do: char_charrangelist_matches(c, rest, defaultValue)
 
 
       def symbols(context, %ExSpirit.TreeMap{root: root}) do

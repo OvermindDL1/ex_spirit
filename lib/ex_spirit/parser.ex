@@ -441,7 +441,7 @@ defmodule ExSpirit.Parser do
 
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("", repeat(char(?T)))
-    iex> {context.error.message, context.result, context.rest}
+    iex> {context.error, context.result, context.rest}
     {nil, [], ""}
 
   ```
