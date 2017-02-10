@@ -480,6 +480,21 @@ defmodule ExSpirit.Parser do
     {nil, 42, ""}
 
   ```
+
+  ## fail
+
+  The fail parser always fails, documenting the user information passed in
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("", fail(42))
+    iex> {context.error.extradata, context.result, context.rest}
+    {42, nil, ""}
+
+  ```
   """
 
   defmodule Context do
@@ -834,7 +849,7 @@ defmodule ExSpirit.Parser do
       end
 
 
-      def fail(context, reason) do
+      def fail(context, reason \\ nil) do
         if !valid_context?(context) do
           context
         else
