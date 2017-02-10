@@ -30,7 +30,7 @@ Takes a list of simple integers of base 10, separated by commas, with optional s
 
 Example Run:
 
-```sh
+```text
 $ mix run examples/number_adder.exs
 Input simple number separated by comma's and optionally spaces and press enter:
 
@@ -68,7 +68,7 @@ Takes a typed in roman numeral from stdin and an enter, parses out the number up
 
 Example Run:
 
-```sh
+```text
 $ mix run examples/roman_numerals.exs
 Input Roman Numerals and press enter:
 MDMXXIV
@@ -93,7 +93,7 @@ A simple xml parser, no attributes, just nodes and text.
 
 Example Run:
 
-```sh
+```text
 $ mix run examples/simple_xml.exs
 Input a single line of xml-like syntax:
 <test1>Some text<test2>Hi</test2> and more</test1>
