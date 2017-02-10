@@ -6,7 +6,7 @@ defmodule NumberAdder do
       uint(),
       repeat(char(?,) |> uint())
       ])
-  ), map: Enum.sum
+  ), map: Enum.sum()
 
   def from_string(input) do
     parse(input, seq([added_number(), ignore(repeat(char(?\s)))]), skipper: repeat(char(?\s)))

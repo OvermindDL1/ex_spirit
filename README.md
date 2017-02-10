@@ -86,3 +86,30 @@ XVIzzz
 Result: 16
 Leftover: "zzz\n"
 ```
+
+### simple_xml.exs
+
+A simple xml parser, no attributes, just nodes and text.
+
+Example Run:
+
+```sh
+$ mix run examples/simple_xml.exs
+Input a single line of xml-like syntax:
+<test1>Some text<test2>Hi</test2> and more</test1>
+Result: {"test1", ["Some text", {"test2", ["Hi"]}, " and more"]}
+
+$ mix run examples/simple_xml.exs
+Input a single line of xml-like syntax:
+<a-tag>How about an improperly terminated tag</b-tag.
+<unknown>:1:48: Expectation Failure: literal `a-tag` did not match the input
+        RuleStack: [tag, node_]
+        Input: b-tag.
+
+$ mix run examples/simple_xml.exs
+Input a single line of xml-like syntax:
+<
+<unknown>:1:1: Parse error: Repeating over a parser failed due to not reaching the minimum amount of 1 with only a repeat count of 0
+        RuleStack: [text, node_]
+        Input: <
+```
