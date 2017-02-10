@@ -143,6 +143,12 @@ defmodule ExSpirit.Parser.Text do
 
     # `chars` parser is like char but it parses all matching as a binary
     iex> import ExSpirit.Tests.Parser
+    iex> context = parse("TEST", chars(?A..?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, "TEST", ""}
+
+    # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Tests.Parser
     iex> context = parse("TEST42", chars(?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, "TEST", "42"}
@@ -151,6 +157,13 @@ defmodule ExSpirit.Parser.Text do
     # also take an initial single-char matcher
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("_TEST42", chars(?_, ?A..?Z))
+    iex> {context.error, context.result, context.rest}
+    {nil, "_TEST", "42"}
+
+    # `chars` parser is like char but it parses all matching as a binary, can
+    # also take an initial single-char matcher
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("_TEST42", chars([?a-?z, ?_], [?_, ?A..?Z]))
     iex> {context.error, context.result, context.rest}
     {nil, "_TEST", "42"}
 
@@ -379,7 +392,7 @@ defmodule ExSpirit.Parser.Text do
       def char_charrangelist_matches(c, _d, defaultValue), do: defaultValue
 
 
-      def chars_increment_while_matching("", position, column, line, _matchers), do: {position, column, line}
+      def chars_increment_while_matching(_matchers, "", position, column, line), do: {position, column, line}
       def chars_increment_while_matching(matchers, <<c::utf8, rest::binary>>, position, column, line) do
         if char_charrangelist_matches(c, matchers) do
           if c == ?\n do
