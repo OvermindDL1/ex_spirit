@@ -495,6 +495,151 @@ defmodule ExSpirit.Parser do
     {42, nil, ""}
 
   ```
+
+  ## map_context
+
+  Runs a function with the context
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> fun = fn c -> %{c|result: 42} end
+    iex> context = parse("a", map_context(fun.()))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, "a"}
+
+  ```
+
+  ## map_result
+
+  Runs a function with the context
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> fun = fn nil -> 42 end
+    iex> context = parse("a", map_result(fun.()))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, "a"}
+
+  ```
+
+  ## skip
+
+  Runs the skipper now
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("  a", skip(), skipper: chars(?\\s, 0))
+    iex> {context.error, context.result, context.rest}
+    {nil, nil, "a"}
+
+  ```
+
+  ## put_state
+
+  Puts something into the state at the specified key
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint() |> put_state(:test, :result))
+    iex> {context.error, context.result, context.rest, context.state}
+    {nil, 42, "", %{test: 42}}
+
+  ```
+
+  ## push_state
+
+  Puts something into the state at the specified key
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint() |> push_state(:test, :result))
+    iex> {context.error, context.result, context.rest, context.state}
+    {nil, 42, "", %{test: [42]}}
+
+  ```
+
+  ## get_state_into
+
+  Get something(s) from the state and put it into the locations in the parser
+  that are marked with &1-* bindings
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("A:A", char() |> put_state(:test, :result) |> lit(?:) |> get_state_into([:test], char(&1)))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?A, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("A:B", char() |> put_state(:test, :result) |> lit(?:) |> get_state_into([:test], char(&1)))
+    iex> {String.starts_with?(context.error.message, "Tried parsing out any of the the characters of"), context.result, context.rest}
+    {true, nil, "B"}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("A:B", char() |> put_state(:test, :result) |> lit(?:) |> get_state_into(:test, :result))
+    iex> {context.error, context.result, context.rest}
+    {nil, ?A, "B"}
+
+  ```
+
+  ## lookahead
+
+  Looks ahead to confirm success, but does not update the context when
+  successful.
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("AA", lit(?A) |> lookahead(lit(?A)) |> char())
+    iex> {context.error, context.result, context.rest}
+    {nil, ?A, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("AB", lit(?A) |> lookahead(lit(?A)) |> char())
+    iex> {String.starts_with?(context.error.message, "Lookahead failed"), context.result, context.rest}
+    {true, nil, "B"}
+
+  ```
+
+  ## lookahead_not
+
+  Looks ahead to confirm failure, but does not update the context when
+  failed.
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("AB", lit(?A) |> lookahead_not(lit(?A)) |> char())
+    iex> {context.error, context.result, context.rest}
+    {nil, ?B, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("AA", lit(?A) |> lookahead_not(lit(?A)) |> char())
+    iex> {String.starts_with?(context.error.message, "Lookahead_not failed"), context.result, context.rest}
+    {true, nil, "A"}
+
+  ```
   """
 
   defmodule Context do
@@ -507,7 +652,8 @@ defmodule ExSpirit.Parser do
       skipper: nil,
       result: nil,
       error: nil,
-      rulestack: []
+      rulestack: [],
+      state: %{},
       )
   end
 
@@ -579,7 +725,10 @@ defmodule ExSpirit.Parser do
         else
           rule_context = %{context | rulestack: [unquote(name) | context.rulestack]}
           return_context = unquote(do_ast)
-          %{return_context | rulestack: context.rulestack}
+          %{return_context |
+            rulestack: context.rulestack,
+            state: context.state,
+          }
         end
       end
     end
@@ -596,7 +745,10 @@ defmodule ExSpirit.Parser do
         unquote(context_ast) = unquote(context_ast) |> unquote(parser_ast)
         unquote(context_ast) = unquote(defrule_impl_map(orig_context_ast, context_ast, opts[:map]))
         unquote(context_ast) = unquote(defrule_impl_fun(context_ast, opts[:fun]))
-        %{unquote(context_ast) | rulestack: unquote(orig_context_ast).rulestack}
+        %{unquote(context_ast) |
+          rulestack: unquote(orig_context_ast).rulestack,
+          state: unquote(orig_context_ast).state,
+        }
       end
     end
   end
@@ -651,21 +803,30 @@ defmodule ExSpirit.Parser do
       end
 
 
-      def valid_context?(%{error: nil}), do: true
-      def valid_context?(_), do: false
+      # def valid_context?(%{error: nil}), do: true
+      # def valid_context?(_), do: false
 
-
-      defmacro run_skipper(context_ast) do
+      defmacro valid_context?(context_ast) do
         quote location: :keep do
           case unquote(context_ast) do
-            %{skipper: nil} = context -> context
-            %{skipper: skipper} = context ->
+            %{error: nil} -> true
+            _ -> false
+          end
+        end
+      end
+
+
+      defmacro skip(context_ast) do
+        quote location: :keep do
+          case unquote(context_ast) do
+            %{skipper: nil, error: nil} = context -> context
+            %{skipper: skipper, error: nil} = context ->
               skipped_context = %{context | skipper: nil} |> skipper.()
               %{skipped_context |
                 skipper: context.skipper,
                 result: context.result,
-                error: context.error
               }
+            bad_context -> bad_context
           end
         end
       end
@@ -797,9 +958,13 @@ defmodule ExSpirit.Parser do
       defmacro expect(context_ast, parser_ast) do
         quote location: :keep do
           context = unquote(context_ast)
-          case context |> unquote(parser_ast) do
-            %{error: nil} = good_context -> good_context
-            bad_context -> ExSpirit.Parser.ExpectationFailureException.makeContextFailed(bad_context)
+          if !valid_context?(context) do
+            context
+          else
+            case context |> unquote(parser_ast) do
+              %{error: nil} = good_context -> good_context
+              bad_context -> ExSpirit.Parser.ExpectationFailureException.makeContextFailed(bad_context)
+            end
           end
         end
       end
@@ -857,6 +1022,199 @@ defmodule ExSpirit.Parser do
             result: nil,
             error:  %ExSpirit.Parser.ParseException{message: "Fail parser called with user reason of: #{inspect reason}", context: context, extradata: reason},
           }
+        end
+      end
+
+
+      defmacro map_context(context_ast, mapper_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            context |> unquote(mapper_ast)
+          end
+        end
+      end
+
+
+      defmacro map_result(context_ast, mapper_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            result = context.result |> unquote(mapper_ast)
+            if Exception.exception?(result) do
+              %{context |
+                error: result,
+                result: nil,
+              }
+            else
+              %{context |
+                result: result,
+              }
+            end
+          end
+        end
+      end
+
+
+      defmacro map_context_around(context_ast, parser_ast, mapper_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            context |> unquote(mapper_ast)
+          end
+        end
+      end
+
+
+      defmacro put_state(context_ast, key, from)
+      defmacro put_state(context_ast, key, :context) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            %{context |
+              state: Map.put(context.state, unquote(key), context),
+            }
+          end
+        end
+      end
+      defmacro put_state(context_ast, key, :result) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            %{context |
+              state: Map.put(context.state, unquote(key), context.result),
+            }
+          end
+        end
+      end
+
+
+      defmacro push_state(context_ast, key, from)
+      defmacro push_state(context_ast, key, :context) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            %{context |
+              state: Map.update(context.state, unquote(key), [context], fn x -> [context | List.wrap(x)] end),
+            }
+          end
+        end
+      end
+      defmacro push_state(context_ast, key, :result) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            %{context |
+              state: Map.update(context.state, unquote(key), [context.result], fn x -> [context.result | List.wrap(x)] end),
+            }
+          end
+        end
+      end
+
+
+      defmacro get_state_into(context_ast, key, :result) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            %{context |
+              result: context.state[unquote(key)]
+            }
+          end
+        end
+      end
+
+      defmacro get_state_into(context_ast, key, :context) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            case context.state[unquote(key)] do
+              %ExSpirit.Parser.Context{} = old_context -> old_context
+              _ ->
+                %{context |
+                  result: nil,
+                  error:  %ExSpirit.Parser.ParseException{message: "Attempted to get a context out of the state at `#{inspect unquote(key)}` but there was no context there", context: context, extradata: key},
+                }
+            end
+          end
+        end
+      end
+
+      defmacro get_state_into(context_ast, keys, parser_ast) do
+        keys = if !is_list(keys), do: [keys], else: keys
+        context_binding = quote do context end
+        parser_ast = Macro.postwalk(parser_ast, fn
+          {:&, _, [0]} = orig_ast -> quote do unquote(context_binding).state end
+          {:&, _, [pos]} = orig_ast ->
+            case Enum.at(keys, pos-1) do
+              nil -> orig_ast
+              {key, default} -> quote do Map.get(unquote(context_binding).state, unquote(key), unquote(default)) end
+              key -> quote do unquote(context_binding).state[unquote(key)] end
+            end
+          ast -> ast
+        end)
+        quote location: :keep do
+          unquote(context_binding) = unquote(context_ast)
+          if !valid_context?(unquote(context_binding)) do
+            unquote(context_binding)
+          else
+            unquote(context_binding) |> unquote(parser_ast)
+          end
+        end
+      end
+
+
+      defmacro lookahead(context_ast, parser_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            case context |> unquote(parser_ast) do
+              %{error: nil} -> context
+              bad_context ->
+                %{context |
+                  result: nil,
+                  error:  %ExSpirit.Parser.ParseException{message: "Lookahead failed", context: context, extradata: bad_context},
+                }
+            end
+          end
+        end
+      end
+
+
+      defmacro lookahead_not(context_ast, parser_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            case context |> unquote(parser_ast) do
+              %{error: nil} = bad_context ->
+                %{context |
+                  result: nil,
+                  error:  %ExSpirit.Parser.ParseException{message: "Lookahead_not failed", context: context, extradata: bad_context},
+                }
+              _context -> context
+            end
+          end
         end
       end
 

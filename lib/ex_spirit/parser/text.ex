@@ -149,6 +149,24 @@ defmodule ExSpirit.Parser.Text do
 
     # `chars` parser is like char but it parses all matching as a binary
     iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", chars(?A..?Z, 0))
+    iex> {context.error, context.result, context.rest}
+    {nil, "", "42"}
+
+    # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("ABCDE", chars(?A..?Z, 1, 3))
+    iex> {context.error, context.result, context.rest}
+    {nil, "ABC", "DE"}
+
+    # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", chars(?A..?Z))
+    iex> {String.starts_with?(context.error.message, "Tried parsing out characters of"), context.result, context.rest}
+    {true, nil, "42"}
+
+    # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Tests.Parser
     iex> context = parse("TEST42", chars(?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, "TEST", "42"}
@@ -156,14 +174,14 @@ defmodule ExSpirit.Parser.Text do
     # `chars` parser is like char but it parses all matching as a binary, can
     # also take an initial single-char matcher
     iex> import ExSpirit.Tests.Parser
-    iex> context = parse("_TEST42", chars(?_, ?A..?Z))
+    iex> context = parse("_TEST42", chars1(?_, ?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, "_TEST", "42"}
 
     # `chars` parser is like char but it parses all matching as a binary, can
     # also take an initial single-char matcher
     iex> import ExSpirit.Tests.Parser
-    iex> context = parse("_TEST42", chars([?a-?z, ?_], [?_, ?A..?Z]))
+    iex> context = parse("_TEST42", chars1([?a-?z, ?_], [?_, ?A..?Z]))
     iex> {context.error, context.result, context.rest}
     {nil, "_TEST", "42"}
 
@@ -221,22 +239,22 @@ defmodule ExSpirit.Parser.Text do
         if !valid_context?(context) do
           context
         else
-          context = run_skipper(context)
-          if String.starts_with?(context.rest, literal) do
-            lit_size = byte_size(literal)
-            lit_bitsize = lit_size * 8
-            lit_chars = String.length(literal)
-            <<_::size(lit_bitsize), rest::binary>> = context.rest
-             %{context |
-              rest: rest,
-              position: context.position + lit_size,
-              column: context.column + lit_chars,
-              result: nil
-            }
-          else
-            %{context |
-              error: %ExSpirit.Parser.ParseException{message: "literal `#{literal}` did not match the input", context: context}
-            }
+          context = skip(context)
+          lit_size = byte_size(literal)
+          case context.rest do
+            <<^literal::binary-size(lit_size), rest::binary>> ->
+              lit_chars = String.length(literal)
+              <<_::binary-size(lit_size), rest::binary>> = context.rest
+               %{context |
+                rest: rest,
+                position: context.position + lit_size,
+                column: context.column + lit_chars,
+                result: nil
+              }
+            _ ->
+              %{context |
+                error: %ExSpirit.Parser.ParseException{message: "literal `#{literal}` did not match the input", context: context}
+              }
           end
         end
       end
@@ -246,20 +264,20 @@ defmodule ExSpirit.Parser.Text do
         if !valid_context?(context) do
           context
         else
-          context = run_skipper(context)
-          <<first::utf8, rest::binary>> = context.rest
-          lit_size = byte_size(<<first::utf8>>)
-          if first === literal do
-             %{context |
-              rest: rest,
-              position: context.position + lit_size,
-              column: context.column + 1,
-              result: nil
-            }
-          else
-            %{context |
-              error: %ExSpirit.Parser.ParseException{message: "literal `#{<<literal::utf8>>}` did not match the input", context: context}
-            }
+          context = skip(context)
+          case context.rest do
+            <<^literal::utf8, rest::binary>> ->
+              lit_size = byte_size(<<literal::utf8>>)
+              %{context |
+                rest: rest,
+                position: context.position + lit_size,
+                column: context.column + 1,
+                result: nil
+              }
+            _ ->
+              %{context |
+                error: %ExSpirit.Parser.ParseException{message: "literal `#{<<literal::utf8>>}` did not match the input", context: context}
+              }
           end
         end
       end
@@ -270,7 +288,7 @@ defmodule ExSpirit.Parser.Text do
         if !valid_context?(context) do
           context
         else
-          context = run_skipper(context)
+          context = skip(context)
           if radix <= 10 do
             uint_10(context, radix, minDigits, maxDigits, 0, 0)
           else
@@ -322,7 +340,7 @@ defmodule ExSpirit.Parser.Text do
         if !valid_context?(context) do
           context
         else
-          case run_skipper(context) do
+          case skip(context) do
             %{rest: <<c::utf8, rest::binary>>} = good_context ->
               %{good_context |
                 result: c,
@@ -350,7 +368,7 @@ defmodule ExSpirit.Parser.Text do
         if !valid_context?(context) do
           context
         else
-          case run_skipper(context) do
+          case skip(context) do
             %{rest: <<c::utf8, rest::binary>>} = matched_context ->
               if char_charrangelist_matches(c, characterMatchers) do
                 %{matched_context |
@@ -375,85 +393,102 @@ defmodule ExSpirit.Parser.Text do
 
       def char_charrangelist_matches(c, matchers, defaultValue \\ false)
       def char_charrangelist_matches(c, c, _defaultValue), do: true
+      def char_charrangelist_matches(c, d, _defaultValue) when is_integer(d), do: d<0 and -c !== d
       def char_charrangelist_matches(c, first..last, _defaultValue) when first<=last and c>=first and c<=last, do: true
       def char_charrangelist_matches(c, first..last, _defaultValue) when first>=last and c<=first and c>=last, do: true
-      def char_charrangelist_matches(c, first..last, _defaultValue) when first<=last and -c>=first and -c<=last, do: true
-      def char_charrangelist_matches(c, first..last, _defaultValue) when first>=last and -c<=first and -c>=last, do: true
+      def char_charrangelist_matches(c, first..last, _defaultValue) when first<=last and -c>=first and -c<=last, do: false
+      def char_charrangelist_matches(c, first..last, _defaultValue) when first>=last and -c<=first and -c>=last, do: false
       def char_charrangelist_matches(c, [], defaultValue), do: defaultValue
       def char_charrangelist_matches(c, [c | rest], _defaultValue), do: true
       def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first<=last and c>=first and c<=last, do: true
       def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first>=last and c<=first and c>=last, do: true
       def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first<=last and -c>=first and -c<=last, do: false
       def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first>=last and -c<=first and -c>=last, do: false
-      def char_charrangelist_matches(c, [first..last | rest], _defaultValue) when first<0 or last<0, do: char_charrangelist_matches(c, rest, true)
-      def char_charrangelist_matches(c, [d | rest], defaultValue) when -c === d, do: false
-      def char_charrangelist_matches(c, [d | rest], defaultValue) when d<0, do: char_charrangelist_matches(c, rest, true)
-      def char_charrangelist_matches(c, [_ | rest], defaultValue), do: char_charrangelist_matches(c, rest, defaultValue)
+      def char_charrangelist_matches(c, [first..last | rest], _defaultValue), do: char_charrangelist_matches(c, rest, first<0)
+      def char_charrangelist_matches(c, [d | rest], defaultValue) when -c===d, do: false
+      def char_charrangelist_matches(c, [d | rest], _defaultValue), do: char_charrangelist_matches(c, rest, d<0)
       def char_charrangelist_matches(c, _d, defaultValue), do: defaultValue
 
 
-      def chars_increment_while_matching(_matchers, "", position, column, line), do: {position, column, line}
-      def chars_increment_while_matching(matchers, <<c::utf8, rest::binary>>, position, column, line) do
+      def chars_increment_while_matching(_matchers, _maximumChars, "", position, column, line, chars), do: {position, column, line, chars}
+      def chars_increment_while_matching(_matchers, maximumChars, _rest, position, column, line, maximumChars), do: {position, column, line, maximumChars}
+      def chars_increment_while_matching(matchers, maximumChars, <<c::utf8, rest::binary>>, position, column, line, chars) do
         if char_charrangelist_matches(c, matchers) do
           if c == ?\n do
-            chars_increment_while_matching(matchers, rest, position+byte_size(<<c::utf8>>), 1, line+1)
+            chars_increment_while_matching(matchers, maximumChars, rest, position+byte_size(<<c::utf8>>), 1, line+1, chars+1)
           else
-            chars_increment_while_matching(matchers, rest, position+byte_size(<<c::utf8>>), column+1, line)
+            chars_increment_while_matching(matchers, maximumChars, rest, position+byte_size(<<c::utf8>>), column+1, line, chars+1)
           end
         else
-          {position, column, line}
+          {position, column, line, chars}
         end
       end
 
-      defmacro chars(context_ast, matchers_ast) do
+
+
+      defmacro chars(context_ast, matchers_ast, minimumChars \\ 1, maximumChars \\ -1) do
         quote location: :keep do
           context = unquote(context_ast)
           matchers = unquote(matchers_ast)
+          minimumChars = unquote(minimumChars)
           if !valid_context?(context) do
             context
           else
-            context = run_skipper(context)
-            {position, column, line} = chars_increment_while_matching(matchers, context.rest, 0, context.column, context.line)
-            <<result::binary-size(position), result_rest::binary>> = context.rest
-            %{context |
-              result: result,
-              rest: result_rest,
-              position: context.position + position,
-              column: column,
-              line: line,
-            }
+            context = skip(context)
+            {position, column, line, chars} = chars_increment_while_matching(matchers, unquote(maximumChars), context.rest, 0, context.column, context.line, 0)
+            if chars < minimumChars do
+              %{context |
+                error: %ExSpirit.Parser.ParseException{message: "Tried parsing out characters of `#{inspect matchers}` but failed due to not meeting the minimum characters required of #{minimumChars}", context: context},
+              }
+            else
+              <<result::binary-size(position), result_rest::binary>> = context.rest
+              %{context |
+                result: result,
+                rest: result_rest,
+                position: context.position + position,
+                column: column,
+                line: line,
+              }
+            end
           end
         end
       end
 
-      defmacro chars(context_ast, firstMatcher_ast, matchers_ast) do
+      defmacro chars1(context_ast, firstMatcher_ast, matchers_ast, minimumChars \\ 1, maximumChars \\ -1) do
         quote location: :keep do
           context = unquote(context_ast)
           firstMatcher = unquote(firstMatcher_ast)
           matchers = unquote(matchers_ast)
+          minimumChars = unquote(minimumChars)
           if !valid_context?(context) do
             context
           else
-            case run_skipper(context) do
+            case skip(context) do
               %{rest: <<c::utf8, rest::binary>>} = first_matched_context ->
                 if char_charrangelist_matches(c, firstMatcher) do
-                  {position, column, line} = chars_increment_while_matching(matchers, rest, byte_size(<<c::utf8>>), if(c===?\n, do: 1, else: first_matched_context.column+1), first_matched_context.line + if(c===?\n, do: 1, else: 0))
-                  <<result::binary-size(position), result_rest::binary>> = first_matched_context.rest
-                  %{first_matched_context |
-                    result: result,
-                    rest: result_rest,
-                    position: first_matched_context.position + position,
-                    column: column,
-                    line: line,
-                  }
+                  {position, column, line, chars} = chars_increment_while_matching(matchers, unquote(maximumChars)-1, rest, byte_size(<<c::utf8>>), if(c===?\n, do: 1, else: first_matched_context.column+1), first_matched_context.line + if(c===?\n, do: 1, else: 0), 1)
+                  if chars < minimumChars do
+                    %{context |
+                      error: %ExSpirit.Parser.ParseException{message: "Tried parsing out characters of `#{inspect matchers}` but failed due to not meeting the minimum characters required of #{minimumChars}", context: context},
+                    }
+                  else
+                    <<result::binary-size(position), result_rest::binary>> = first_matched_context.rest
+                    %{first_matched_context |
+                      result: result,
+                      rest: result_rest,
+                      position: first_matched_context.position + position,
+                      column: column,
+                      line: line,
+                    }
+                  end
                 else
                   %{first_matched_context |
-                    error: %ExSpirit.Parser.ParseException{message: "Tried parsing out any of the the characters of `#{inspect firstMatcher}` but failed due to the input character not matching", context: context},
+                    error: %ExSpirit.Parser.ParseException{message: "Tried parsing out any of the characters of `#{inspect firstMatcher}` but failed due to the input character not matching", context: context},
                   }
                 end
               bad_context ->
                 %{bad_context |
-                  error: %ExSpirit.Parser.ParseException{message: "Tried parsing out any of the the characters of `#{inspect firstMatcher}` but failed due to end of input", context: context},
+                  error: %ExSpirit.Parser.ParseException{message: "Tried parsing out any of the characters of `#{inspect firstMatcher}` but failed due to end of input", context: context},
                 }
             end
           end
@@ -465,7 +500,7 @@ defmodule ExSpirit.Parser.Text do
         if !valid_context?(context) do
           context
         else
-          context = run_skipper(context)
+          context = skip(context)
           %{context | result: nil}
           |> symbols_(root)
         end

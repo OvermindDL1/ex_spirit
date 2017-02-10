@@ -101,10 +101,10 @@ Result: {"test1", ["Some text", {"test2", ["Hi"]}, " and more"]}
 
 $ mix run examples/simple_xml.exs
 Input a single line of xml-like syntax:
-<a-tag>How about an improperly terminated tag</b-tag.
+<a-tag>How about an improperly terminated tag</b-tag>
 <unknown>:1:48: Expectation Failure: literal `a-tag` did not match the input
         RuleStack: [tag, node_]
-        Input: b-tag.
+        Input: b-tag>
 
 $ mix run examples/simple_xml.exs
 Input a single line of xml-like syntax:

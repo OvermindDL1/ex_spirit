@@ -1,21 +1,15 @@
 defmodule SimpleXML do
   use ExSpirit.Parser, text: true
 
-  defrule text( repeat(char(-?<), 1) ), map: :erlang.iolist_to_binary()
+  defrule text( chars(-?<) )
 
-  defrule tag_name( repeat(char([?a..?z, ?A..?Z, ?0..?9, ?_, ?-]), 1) )
+  defrule tag_name( chars([?a..?z, ?A..?Z, ?0..?9, ?_, ?-]) )
 
   defrule tag(
-    branch(seq([ lit(?<), tag_name, lit(?>) ]),
-      fn name ->
-        name = :erlang.iolist_to_binary(name)
-        fn context ->
-          context |> expect(tag(name, seq([
-            repeat(node_()),
-            lit("</"), lit(name), lit(?>),
-          ])))
-        end
-      end)
+    lit(?<) |> tag_name |> put_state(:tagname, :result) |> lit(?>) |> expect(seq([
+      get_state_into(:tagname, tag(&1, repeat(node_()))),
+      lit("</"), get_state_into(:tagname, lit(&1)), lit(?>)
+    ]))
   )
 
   defrule node_(
