@@ -867,13 +867,14 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro seq(context, [first_seq | rest_seq] = sequences) do
+      defmacro seq(context, [first_seq | rest_seq]) do
+        context_binding = quote do context end
         quote location: :keep do
-          context = unquote(context)
-          if !valid_context?(context) do
-            context
+          unquote(context_binding) = unquote(context)
+          if !valid_context?(unquote(context_binding)) do
+            unquote(context_binding)
           else
-            context |> unquote(seq_expand(context, first_seq, rest_seq))
+            unquote(context_binding) |> unquote(seq_expand(context_binding, first_seq, rest_seq))
           end
         end
       end
@@ -899,13 +900,14 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro alt(context, [first_choice | rest_choices] = choices) do
+      defmacro alt(context_ast, [first_choice | rest_choices] = choices) do
+        context_binding = quote do context end
         quote location: :keep do
-          context = unquote(context)
-          if !valid_context?(context) do
-            context
+          unquote(context_binding) = unquote(context_ast)
+          if !valid_context?(unquote(context_binding)) do
+            unquote(context_binding)
           else
-            context |> unquote(alt_expand(context, first_choice, rest_choices))
+            unquote(context_binding) |> unquote(alt_expand(context_binding, first_choice, rest_choices))
           end
         end
       end
@@ -936,21 +938,21 @@ defmodule ExSpirit.Parser do
 
       defmacro no_skip(context_ast, parser_ast) do
         quote location: :keep do
-          context = unquote(context_ast)
-          noskip_context = %{context | skipper: nil}
+          context_no_skip = unquote(context_ast)
+          noskip_context = %{context_no_skip | skipper: nil}
           return_context = noskip_context |> unquote(parser_ast)
-          %{return_context | skipper: context.skipper}
+          %{return_context | skipper: context_no_skip.skipper}
         end
       end
 
 
       defmacro skipper(context_ast, parser_ast, skipper_ast) do
         quote location: :keep do
-          context = unquote(context_ast)
+          context_skipper = unquote(context_ast)
           skipper = fn context -> context |> unquote(skipper_ast) end
-          newskip_context = %{context | skipper: skipper}
+          newskip_context = %{context_skipper | skipper: skipper}
           return_context = newskip_context |> unquote(parser_ast)
-          %{return_context | skipper: context.skipper}
+          %{return_context | skipper: context_skipper.skipper}
         end
       end
 
@@ -1097,13 +1099,13 @@ defmodule ExSpirit.Parser do
 
       defmacro map_context_around(context_ast, mapper_ast, parser_ast) do
         quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
+          context_map_context_around = unquote(context_ast)
+          if !valid_context?(context_map_context_around) do
+            context_map_context_around
           else
-            case context |> unquote(parser_ast) do
+            case context_map_context_around |> unquote(parser_ast) do
               %{error: nil} = new_context ->
-                {context, new_context} |> unquote(mapper_ast)
+                {context_map_context_around, new_context} |> unquote(mapper_ast)
               bad_context -> bad_context
             end
           end

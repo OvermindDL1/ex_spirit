@@ -428,24 +428,24 @@ defmodule ExSpirit.Parser.Text do
 
       defmacro chars(context_ast, matchers_ast, minimumChars \\ 1, maximumChars \\ -1) do
         quote location: :keep do
-          context = unquote(context_ast)
+          original_context = unquote(context_ast)
           matchers = unquote(matchers_ast)
           minimumChars = unquote(minimumChars)
-          if !valid_context?(context) do
-            context
+          if !valid_context?(original_context) do
+            original_context
           else
-            context = skip(context)
-            {position, column, line, chars} = chars_increment_while_matching(matchers, unquote(maximumChars), context.rest, 0, context.column, context.line, 0)
+            skipped_context = skip(original_context)
+            {position, column, line, chars} = chars_increment_while_matching(matchers, unquote(maximumChars), skipped_context.rest, 0, skipped_context.column, skipped_context.line, 0)
             if chars < minimumChars do
-              %{context |
-                error: %ExSpirit.Parser.ParseException{message: "Tried parsing out characters of `#{inspect matchers}` but failed due to not meeting the minimum characters required of #{minimumChars}", context: context},
+              %{skipped_context |
+                error: %ExSpirit.Parser.ParseException{message: "Tried parsing out characters of `#{inspect matchers}` but failed due to not meeting the minimum characters required of #{minimumChars}", context: skipped_context},
               }
             else
-              <<result::binary-size(position), result_rest::binary>> = context.rest
-              %{context |
+              <<result::binary-size(position), result_rest::binary>> = skipped_context.rest
+              %{skipped_context |
                 result: result,
                 rest: result_rest,
-                position: context.position + position,
+                position: skipped_context.position + position,
                 column: column,
                 line: line,
               }
