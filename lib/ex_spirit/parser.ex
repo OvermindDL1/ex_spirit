@@ -672,6 +672,7 @@ defmodule ExSpirit.Parser do
       error: nil,
       rulestack: [],
       state: %{},
+      userdata: nil
       )
   end
 
