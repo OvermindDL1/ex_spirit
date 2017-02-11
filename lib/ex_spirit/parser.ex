@@ -528,6 +528,24 @@ defmodule ExSpirit.Parser do
 
   ```
 
+  ## map_context_around
+
+  Runs a function and parser with the both the context before and after the
+  function call.
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> fun = fn {pre, post} -> %{post|result: {pre, post}} end
+    iex> context = parse("42", map_context_around(fun.(), uint()))
+    iex> {pre, post} = context.result
+    iex> {context.error, pre.column, post.column, context.rest}
+    {nil, 1, 3, ""}
+
+  ```
+
   ## skip
 
   Runs the skipper now
@@ -1060,13 +1078,17 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro map_context_around(context_ast, parser_ast, mapper_ast) do
+      defmacro map_context_around(context_ast, mapper_ast, parser_ast) do
         quote location: :keep do
           context = unquote(context_ast)
           if !valid_context?(context) do
             context
           else
-            context |> unquote(mapper_ast)
+            case context |> unquote(parser_ast) do
+              %{error: nil} = new_context ->
+                {context, new_context} |> unquote(mapper_ast)
+              bad_context -> bad_context
+            end
           end
         end
       end
