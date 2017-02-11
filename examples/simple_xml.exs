@@ -6,7 +6,7 @@ defmodule SimpleXML do
   defrule tag_name( chars([?a..?z, ?A..?Z, ?0..?9, ?_, ?-]) )
 
   defrule tag(
-    lit(?<) |> tag_name |> put_state(:tagname, :result) |> lit(?>) |> expect(seq([
+    lit(?<) |> tag_name() |> put_state(:tagname, :result) |> lit(?>) |> expect(seq([
       get_state_into(:tagname, tag(&1, repeat(node_()))),
       lit("</"), get_state_into(:tagname, lit(&1)), lit(?>)
     ]))
