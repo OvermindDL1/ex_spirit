@@ -658,6 +658,22 @@ defmodule ExSpirit.Parser do
     {true, nil, "A"}
 
   ```
+
+  ## lexeme
+
+  Returns the entire parsed text from the parser, regardless of the actual
+  return value.
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("A256B", lexeme(char() |> uint()))
+    iex> {context.error, context.result, context.rest}
+    {nil, "A256", "B"}
+
+  ```
   """
 
   defmodule Context do
@@ -1236,6 +1252,34 @@ defmodule ExSpirit.Parser do
                   error:  %ExSpirit.Parser.ParseException{message: "Lookahead_not failed", context: context, extradata: bad_context},
                 }
               _context -> context
+            end
+          end
+        end
+      end
+
+
+      defmacro lexeme(context_ast, parser_ast) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            case context |> unquote(parser_ast) do
+              %{error: nil} = good_context ->
+                bytes = good_context.position - context.position
+                case context.rest do
+                  <<parsed::binary-size(bytes), newRest::binary>> ->
+                    %{good_context |
+                      result: parsed,
+                      rest: newRest,
+                    }
+                  _ ->
+                    %{context |
+                      result: nil,
+                      error:  %ExSpirit.Parser.ParseException{message: "Lexeme failed, should be impossible, length needed is #{bytes} but available is only #{byte_size(context.rest)}", context: context, extradata: good_context},
+                    }
+                end
+              bad_context -> bad_context
             end
           end
         end
