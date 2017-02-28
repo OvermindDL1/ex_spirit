@@ -514,7 +514,7 @@ defmodule ExSpirit.Parser do
 
   ## map_result
 
-  Runs a function with the context
+  Runs a function with the result
 
   ### Examples
 
