@@ -171,15 +171,15 @@ defmodule ExSpirit.Parser.Text do
     iex> {context.error, context.result, context.rest}
     {nil, "TEST", "42"}
 
-    # `chars` parser is like char but it parses all matching as a binary, can
-    # also take an initial single-char matcher
+    # `chars1` parser is like chars but it parses all matching as a binary
+    # also takes an initial single-char matcher
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("_TEST42", chars1(?_, ?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, "_TEST", "42"}
 
-    # `chars` parser is like char but it parses all matching as a binary, can
-    # also take an initial single-char matcher
+    # `chars1` parser is like chars but it parses all matching as a binary
+    # also takes an initial single-char matcher
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("_TEST42", chars1([?a-?z, ?_], [?_, ?A..?Z]))
     iex> {context.error, context.result, context.rest}
