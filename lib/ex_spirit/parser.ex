@@ -496,7 +496,7 @@ defmodule ExSpirit.Parser do
 
   ```
 
-  ## map_context
+  ## pipe_context_into
 
   Runs a function with the context
 
@@ -506,13 +506,13 @@ defmodule ExSpirit.Parser do
 
     iex> import ExSpirit.Tests.Parser
     iex> fun = fn c -> %{c|result: 42} end
-    iex> context = parse("a", map_context(fun.()))
+    iex> context = parse("a", pipe_context_into(fun.()))
     iex> {context.error, context.result, context.rest}
     {nil, 42, "a"}
 
   ```
 
-  ## map_result
+  ## pipe_result_into
 
   Runs a function with the result
 
@@ -522,13 +522,13 @@ defmodule ExSpirit.Parser do
 
     iex> import ExSpirit.Tests.Parser
     iex> fun = fn nil -> 42 end
-    iex> context = parse("a", map_result(fun.()))
+    iex> context = parse("a", pipe_result_into(fun.()))
     iex> {context.error, context.result, context.rest}
     {nil, 42, "a"}
 
   ```
 
-  ## map_context_around
+  ## pipe_context_around
 
   Runs a function and parser with the both the context before and after the
   function call.
@@ -539,7 +539,7 @@ defmodule ExSpirit.Parser do
 
     iex> import ExSpirit.Tests.Parser
     iex> fun = fn {pre, post} -> %{post|result: {pre, post}} end
-    iex> context = parse("42", map_context_around(fun.(), uint()))
+    iex> context = parse("42", pipe_context_around(fun.(), uint()))
     iex> {pre, post} = context.result
     iex> {context.error, pre.column, post.column, context.rest}
     {nil, 1, 3, ""}
@@ -813,7 +813,7 @@ defmodule ExSpirit.Parser do
       def unquote(name)(unquote(orig_context_ast)) do
         unquote(context_ast) = %{unquote(orig_context_ast) | rulestack: [unquote(name) | unquote(orig_context_ast).rulestack]}
         unquote(context_ast) = unquote(context_ast) |> unquote(parser_ast)
-        unquote(context_ast) = unquote(defrule_impl_pipe(orig_context_ast, context_ast, opts[:pipe_result_into] || opts[:map])) # TODO:  Remove `:map` option when backwards-compat is breaking
+        unquote(context_ast) = unquote(defrule_impl_pipe(orig_context_ast, context_ast, opts[:pipe_result_into]))
         unquote(context_ast) = unquote(defrule_impl_fun(context_ast, opts[:fun]))
         %{unquote(context_ast) |
           rulestack: unquote(orig_context_ast).rulestack,
@@ -1098,7 +1098,7 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro map_context(context_ast, mapper_ast) do
+      defmacro pipe_context_into(context_ast, mapper_ast) do
         quote location: :keep do
           context = unquote(context_ast)
           if !valid_context?(context) do
@@ -1110,7 +1110,7 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro map_result(context_ast, mapper_ast) do
+      defmacro pipe_result_into(context_ast, mapper_ast) do
         quote location: :keep do
           context = unquote(context_ast)
           if !valid_context?(context) do
@@ -1132,7 +1132,7 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro map_context_around(context_ast, mapper_ast, parser_ast) do
+      defmacro pipe_context_around(context_ast, mapper_ast, parser_ast) do
         quote location: :keep do
           context_map_context_around = unquote(context_ast)
           if !valid_context?(context_map_context_around) do
