@@ -905,23 +905,23 @@ defmodule ExSpirit.Parser do
 
 
       defmacro seq(context_ast, [first_seq | rest_seq]) do
-        context_binding = quote do context end
+        # context_binding = quote do context end
         quote location: :keep do
           case unquote(context_ast) do
-            valid_context_matcher() = unquote(context_binding) ->
-              context |> unquote(seq_expand(context_binding, first_seq, rest_seq))
-            context -> context
+            %{error: nil} = context ->
+              context |> unquote(seq_expand(first_seq, rest_seq))
+            bad_context -> bad_context
           end
         end
       end
 
-      defp seq_expand(context_ast, this_ast, [next_ast | rest_ast]) do
+      defp seq_expand(this_ast, [next_ast | rest_ast]) do
         quote do
           unquote(this_ast) |> case do
             %{error: nil, result: nil} = good_context ->
-              good_context |> unquote(seq_expand(context_ast, next_ast, rest_ast))
+              good_context |> unquote(seq_expand(next_ast, rest_ast))
             %{error: nil, result: result} = good_context ->
-              case good_context |> unquote(seq_expand(context_ast, next_ast, rest_ast)) do
+              case good_context |> unquote(seq_expand(next_ast, rest_ast)) do
                 %{error: nil, result: nil} = return_context -> %{return_context | result: result}
                 %{error: nil, result: results} = return_context when is_list(results) -> %{return_context | result: [result | results]}
                 %{error: nil, result: results} = return_context -> %{return_context | result: [result, results]}
@@ -931,29 +931,28 @@ defmodule ExSpirit.Parser do
           end
         end
       end
-      defp seq_expand(_context_ast, this_ast, []) do
+      defp seq_expand(this_ast, []) do
         this_ast
       end
 
 
       defmacro alt(context_ast, [first_choice | rest_choices] = choices) do
-        context_binding = quote do context end
+        context_binding = Macro.var(:original_context, :alt)
         quote location: :keep do
-          unquote(context_binding) = unquote(context_ast)
-          if !valid_context?(unquote(context_binding)) do
-            unquote(context_binding)
-          else
-            unquote(context_binding) |> unquote(alt_expand(context_binding, first_choice, rest_choices))
+          case unquote(context_ast) do
+            %{error: nil} = unquote(context_binding) ->
+              unquote(context_binding) |> unquote(alt_expand(context_binding, first_choice, rest_choices))
+            bad_context -> bad_context
           end
         end
       end
 
-      defp alt_expand(context_ast, this_ast, [next_ast | rest_ast]) do
+      defp alt_expand(original_context_ast, this_ast, [next_ast | rest_ast]) do
         quote location: :keep do
           unquote(this_ast) |> case do
             %{error: nil} = good_context -> good_context
             %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
-            _bad_context -> unquote(context_ast) |> unquote(alt_expand(context_ast, next_ast, rest_ast))
+            _bad_context -> unquote(original_context_ast) |> unquote(alt_expand(original_context_ast, next_ast, rest_ast))
           end
         end
       end
