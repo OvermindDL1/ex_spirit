@@ -674,6 +674,40 @@ defmodule ExSpirit.Parser do
     {nil, "A256", "B"}
 
   ```
+
+  ## eoi
+
+  Success if there at the "End Of Input", else fails.
+  If the argument is statically `pass_result: true` then it passes on the prior
+  return value.
+  If the argument is statically `result: whatever` with `whatever` being what
+  you want to return, then it will set the result to that value on success.
+
+  ### Examples
+
+  ```elixir
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint() |> eoi())
+    iex> {context.error, context.result, context.rest}
+    {nil, nil, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint() |> eoi(pass_result: true))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42", uint() |> eoi(result: :success))
+    iex> {context.error, context.result, context.rest}
+    {nil, :success, ""}
+
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42a", uint() |> eoi())
+    iex> {is_map(context.error), context.result, context.rest}
+    {true, nil, "a"}
+
+  ```
   """
 
   defmodule Context do
@@ -1282,6 +1316,26 @@ defmodule ExSpirit.Parser do
                     }
                 end
               bad_context -> bad_context
+            end
+          end
+        end
+      end
+
+
+      defmacro eoi(context_ast, opts \\ []) do
+        quote location: :keep do
+          context = unquote(context_ast)
+          if !valid_context?(context) do
+            context
+          else
+            case context do
+              %{rest: ""} ->
+                unquote(if(opts[:pass_result], do: quote(do: context), else: quote(do: %{context | result: unquote(opts[:result])})))
+              _ ->
+                %{context |
+                  result: nil,
+                  error:  %ExSpirit.Parser.ParseException{message: "eoi failed, not at End Of Input", context: context},
+                }
             end
           end
         end
