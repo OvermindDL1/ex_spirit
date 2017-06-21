@@ -682,6 +682,7 @@ defmodule ExSpirit.Parser do
   return value.
   If the argument is statically `result: whatever` with `whatever` being what
   you want to return, then it will set the result to that value on success.
+  `pass_result` must be set to false to use `result: value` or it is skipped.
 
   ### Examples
 
