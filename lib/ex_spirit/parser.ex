@@ -173,9 +173,9 @@ defmodule ExSpirit.Parser do
         seq([ uint(), lit(?\s), uint() ])
         )
 
-      defrule testrule_map(
+      defrule testrule_pipe(
         seq([ uint(), lit(?\s), uint() ])
-        ), map: Enum.map(fn i -> i-40 end)
+        ), pipe_result_into: Enum.map(fn i -> i-40 end)
 
       defrule testrule_fun(
         seq([ uint(), lit(?\s), uint() ])
@@ -206,7 +206,7 @@ defmodule ExSpirit.Parser do
 
     # `defrule`s can map the result to return a different one:
     iex> import ExSpirit.Tests.Parser
-    iex> contexts = parse("42 64", testrule_map())
+    iex> contexts = parse("42 64", testrule_pipe())
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, [2, 24], ""}
 
@@ -812,7 +812,7 @@ defmodule ExSpirit.Parser do
       def unquote(name)(unquote(orig_context_ast)) do
         unquote(context_ast) = %{unquote(orig_context_ast) | rulestack: [unquote(name) | unquote(orig_context_ast).rulestack]}
         unquote(context_ast) = unquote(context_ast) |> unquote(parser_ast)
-        unquote(context_ast) = unquote(defrule_impl_map(orig_context_ast, context_ast, opts[:map]))
+        unquote(context_ast) = unquote(defrule_impl_pipe(orig_context_ast, context_ast, opts[:pipe_result_into] || opts[:map])) # TODO:  Remove `:map` option when backwards-compat is breaking
         unquote(context_ast) = unquote(defrule_impl_fun(context_ast, opts[:fun]))
         %{unquote(context_ast) |
           rulestack: unquote(orig_context_ast).rulestack,
@@ -822,8 +822,8 @@ defmodule ExSpirit.Parser do
     end
   end
 
-  defp defrule_impl_map(_orig_context_ast, context_ast, nil), do: context_ast
-  defp defrule_impl_map(orig_context_ast, context_ast, map_ast) do
+  defp defrule_impl_pipe(_orig_context_ast, context_ast, nil), do: context_ast
+  defp defrule_impl_pipe(orig_context_ast, context_ast, map_ast) do
     quote location: :keep do
       case unquote(context_ast) do
         %{error: nil} = good_context ->

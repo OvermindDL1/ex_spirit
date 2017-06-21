@@ -20,9 +20,9 @@ defmodule ExSpirit.Tests.Parser do
     seq([ uint(), lit(?\s), uint() ])
     )
 
-  defrule testrule_map(
+  defrule testrule_pipe(
     seq([ uint(), lit(?\s), uint() ])
-    ), map: Enum.map(fn i -> i-40 end)
+    ), pipe_result_into: Enum.map(fn i -> i-40 end)
 
   defrule testrule_fun(
     seq([ uint(), lit(?\s), uint() ])
