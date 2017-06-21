@@ -3,7 +3,7 @@ defmodule ExSpirit.Mixfile do
 
   def project do
     [app: :ex_spirit,
-     version: "0.2.6",
+     version: "0.2.7",
      elixir: "~> 1.4",
      description: description(),
      package: package(),
