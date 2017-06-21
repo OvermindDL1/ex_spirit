@@ -885,6 +885,8 @@ defmodule ExSpirit.Parser do
         end
       end
 
+      defmacro valid_context_matcher(), do: quote(do: %{error: nil})
+
 
       defmacro skip(context_ast) do
         quote location: :keep do
@@ -902,14 +904,13 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro seq(context, [first_seq | rest_seq]) do
+      defmacro seq(context_ast, [first_seq | rest_seq]) do
         context_binding = quote do context end
         quote location: :keep do
-          unquote(context_binding) = unquote(context)
-          if !valid_context?(unquote(context_binding)) do
-            unquote(context_binding)
-          else
-            unquote(context_binding) |> unquote(seq_expand(context_binding, first_seq, rest_seq))
+          case unquote(context_ast) do
+            valid_context_matcher() = unquote(context_binding) ->
+              context |> unquote(seq_expand(context_binding, first_seq, rest_seq))
+            context -> context
           end
         end
       end
