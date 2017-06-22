@@ -31,4 +31,8 @@ defmodule ExSpirit.Tests.Parser do
   defrule testrule_context(context) do
     %{context | result: "always success"}
   end
+
+  defrule testrule_context_arg(context, value) do
+    %{context | result: value}
+  end
 end

@@ -184,8 +184,11 @@ defmodule ExSpirit.Parser do
       defrule testrule_context(context) do
         %{context | result: "always success"}
       end
-    end
 
+      defrule testrule_context_arg(context, value) do
+        %{context | result: value}
+      end
+    end
 
   ```
 
@@ -221,6 +224,13 @@ defmodule ExSpirit.Parser do
     iex> contexts = parse("42 64", testrule_context())
     iex> {contexts.error, contexts.result, contexts.rest}
     {nil, "always success", "42 64"}
+
+    # `defrule`s with a context can have other arguments too, but context
+    # must always be first
+    iex> import ExSpirit.Tests.Parser
+    iex> contexts = parse("42 64", testrule_context_arg(:success))
+    iex> {contexts.error, contexts.result, contexts.rest}
+    {nil, :success, "42 64"}
 
   ```
 
@@ -793,9 +803,9 @@ defmodule ExSpirit.Parser do
 
   defmacro defrule({name, _, [parser_ast]}) when is_atom(name), do: defrule_impl(name, parser_ast, [])
 
-  defmacro defrule({name, _, [{:context, _, _} = context_ast]}, do: do_ast) when is_atom(name) do
+  defmacro defrule({name, _, [{:context, _, _} = context_ast | rest_args_ast]}, do: do_ast) when is_atom(name) do
     quote location: :keep do
-      def unquote(name)(unquote(context_ast)) do
+      def unquote(name)(unquote(context_ast), unquote_splicing(rest_args_ast)) do
         context = unquote(context_ast)
         if !valid_context?(context) do
           context
