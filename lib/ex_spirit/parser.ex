@@ -893,11 +893,17 @@ defmodule ExSpirit.Parser do
           case unquote(context_ast) do
             %{skipper: nil, error: nil} = context -> context
             %{skipper: skipper, error: nil} = context ->
-              skipped_context = %{context | skipper: nil} |> skipper.()
-              %{skipped_context |
-                skipper: context.skipper,
-                result: context.result,
-              }
+              case %{context | skipper: nil} |> skipper.() do
+                %{error: nil} = skipped_context ->
+                  %{skipped_context |
+                    skipper: context.skipper,
+                    result: context.result,
+                  }
+                bad_skipped_context ->
+                  %{bad_skipped_context |
+                    skipper: context.skipper,
+                  }
+              end
             bad_context -> bad_context
           end
         end
