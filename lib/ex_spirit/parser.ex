@@ -262,6 +262,7 @@ defmodule ExSpirit.Parser do
 
   The `ignore` combination parser takes and runs a parser but ignores the
   result of the parser, instead returning `nil`.
+  Can give the option of `pass_result: true` to pass the previous result on.
 
   ### Examples
 
@@ -272,6 +273,12 @@ defmodule ExSpirit.Parser do
     iex> context = parse("Test", ignore(char([?a..?z, ?T])))
     iex> {context.error, context.result, context.rest}
     {nil, nil, "est"}
+
+    # `ignore` will pass on the previous result if you want it to
+    iex> import ExSpirit.Tests.Parser
+    iex> context = parse("42Test", uint() |> ignore(char([?a..?z, ?T]), pass_result: true))
+    iex> {context.error, context.result, context.rest}
+    {nil, 42, "est"}
 
   ```
 
@@ -998,11 +1005,14 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro ignore(context_ast, parser_ast) do
+      defmacro ignore(context_ast, parser_ast, opts \\ []) do
         quote location: :keep do
-          context = unquote(context_ast)
-          return_context = context |> unquote(parser_ast)
-          %{return_context | result: nil}
+          case unquote(context_ast) do
+            %{error: nil} = context ->
+              return_context = context |> unquote(parser_ast)
+              %{return_context | result: unquote(if(opts[:pass_result], do: quote(do: unquote(context_ast).result), else: quote(do: nil)))}
+            bad_context -> bad_context
+          end
         end
       end
 
