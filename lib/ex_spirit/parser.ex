@@ -959,7 +959,7 @@ defmodule ExSpirit.Parser do
       end
 
 
-      defmacro alt(context_ast, [first_choice | rest_choices] = choices) do
+      defmacro alt(context_ast, [first_choice | rest_choices]) do
         context_binding = Macro.var(:original_context, :alt)
         quote location: :keep do
           case unquote(context_ast) do
