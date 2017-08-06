@@ -48,6 +48,25 @@ defmodule ExSpirit.Parserx do
           {position, column, line, chars}
         end
       end
+
+      defp unquote(:'$repeat$')(_sep, _fun, _minimum, maximum, context, count) when count >= maximum, do: %{context | result: []}
+      defp unquote(:'$repeat$')(sep, fun, minimum, maximum, context, count) do
+        context = %{context | result: []}
+        case fun.(context) do
+          %{error: nil, result: result} = new_context ->
+            case unquote(:'$repeat$')(nil, sep || fun, minimum, maximum, new_context, count+1) do
+              %{error: nil, result: results} = last_context when is_list(results) -> %{last_context | result: [result | results]}
+              %{error: nil, result: results} = last_context -> throw :whaaa
+              error_context -> error_context
+            end
+          _ when minimum > count ->
+            %{context |
+              result: nil,
+              error:  %ExSpirit.Parser.ParseException{message: "Repeating over a parser failed due to not reaching the minimum amount of #{minimum} with only a repeat count of #{count}", context: context, extradata: count},
+            }
+          _ -> context
+        end
+      end
     end
   end
 
@@ -449,6 +468,7 @@ defmodule ExSpirit.Parserx do
     {:char, 0} => &cmd_char_0/2,
     :char => &cmd_char_n/2,
     :chars => &cmd_chars_n/2,
+    :lit => &cmd_lit_n/2,
     {:|>, 2} => &cmd_seq_2/2,
     :seq => &cmd_seq_n/2,
     {:||, 2} => &cmd_alt_2/2,
@@ -456,6 +476,12 @@ defmodule ExSpirit.Parserx do
     {:skip, 0} => &cmd_skip_0/2,
     {:skip, 2} => &cmd_skip_2/2,
     {:no_skip, 1} => &cmd_no_skip_1/2,
+    {:lexeme, 1} => &cmd_lexeme_1/2,
+    {:ignore, 1} => &cmd_ignore_1/2,
+    {:repeat, 1} => &cmd_repeat_1_4/2,
+    {:repeat, 2} => &cmd_repeat_1_4/2,
+    {:repeat, 3} => &cmd_repeat_1_4/2,
+    {:repeat, 4} => &cmd_repeat_1_4/2,
   }
 
 
@@ -532,6 +558,10 @@ defmodule ExSpirit.Parserx do
 
   defp cmd_char_n_matchers(c_ast, matchers) when is_list(matchers) do
     matchers
+    |> Enum.sort_by(fn
+      l.._r -> l
+      c -> c
+    end, &>/2)
     |> Enum.reduce(nil, fn
       (matcher, nil) ->
         {_is_pos, left} = cmd_char_n_matcher(c_ast, matcher)
@@ -577,6 +607,33 @@ defmodule ExSpirit.Parserx do
   end
 
 
+  defp cmd_lit_n(env, orig_lits) do
+    lits =
+      orig_lits
+      |> Enum.map(fn # Turn single characters into a binary
+        c when is_integer(c) -> <<c::utf8>>
+        s -> s
+      end)
+      |> Enum.sort_by(&String.length/1, &>/2) # Sort to match longest first
+      |> Enum.uniq()
+      |> Enum.flat_map(fn s -> # flat_map'ing because `->` returns wrapped in a list because of Elixir oddness
+          quote do
+            %{rest: unquote(s)<>rest} = context -> %{context | rest: rest, result: nil}
+          end
+      end)
+    lits =
+      lits ++ quote do # `->` already gets returned as a list...
+        context ->
+          %{context |
+            error: %ExSpirit.Parser.ParseException{message: "Failed matching out a literal of one of `#{inspect unquote(orig_lits)}`", context: context},
+          }
+      end
+    context_skip_if(env) do
+      {:case, [], [[do: lits]]}
+    end
+  end
+
+
   defp cmd_seq_2(env, seq) do
     seq = cmd_seq_2_flatten({:|>, [], seq})
     cmd_seq_n(env, seq)
@@ -610,6 +667,8 @@ defmodule ExSpirit.Parserx do
         |> case do
             {nil, %{error: nil} = context} -> context
             {result, %{error: nil, result: nil} = context} -> %{context | result: result}
+            # {result, %{error: nil, result: results} = context} when is_tuple(results) -> %{context | result: :erlang.append_element(results, result)} # backwards
+            # {result, %{error: nil, result: results} = context} -> %{context | result: {result, results}}
             {result, %{error: nil, result: results} = context} when is_list(results) -> %{context | result: [result | results]}
             {result, %{error: nil, result: results} = context} -> %{context | result: [result, results]}
             {_result, context} -> context
@@ -707,6 +766,78 @@ defmodule ExSpirit.Parserx do
             |> case do
               context -> %{context | skipper: skipper}
             end
+        end
+      end
+    end
+  end
+
+
+  defp cmd_lexeme_1(env, [parser]) do
+    {env, parser} = parser_to_ast(env, parser)
+    context_skip_if(env) do
+      quote do
+        case do
+          %{position: position} = context ->
+            case context |> unquote(parser) do
+              %{error: nil, position: new_position} = good_context ->
+                bytes = new_position - position
+                case context.rest do
+                  <<parsed::binary-size(bytes), rest::binary>> ->
+                    %{good_context |
+                      result: parsed,
+                      rest: rest,
+                    }
+                  _ ->
+                    %{good_context |
+                      result: nil,
+                      error:  %ExSpirit.Parser.ParseException{message: "Lexeme failed, length needed is #{bytes} but available is only #{byte_size(context.rest)}", context: context, extradata: good_context},
+                    }
+                end
+              context -> context
+            end
+        end
+      end
+    end
+  end
+
+
+  defp cmd_ignore_1(env, [parser]) do
+    {env, parser} = parser_to_ast(env, parser)
+    context_if(env) do
+      quote do
+        case do
+          context -> %{(context |> unquote(parser)) | result: nil}
+        end
+      end
+    end
+  end
+
+
+  defp cmd_repeat_1_4(env, opts) do
+    {parser, opts} =
+      case opts do
+        [parser] -> {parser, []}
+        [parser, opts] -> {parser, List.flatten(opts)}
+      end
+    minimum = opts[:min] || 1
+    maximum = opts[:max] || :infinite
+    sep     = opts[:sep] || nil
+
+    {env, ast_parser} = parser_to_ast(env, parser)
+    fparser = quote do fn context -> context |> unquote(ast_parser) end end
+    {env, fsep} =
+      case sep do
+        nil -> {env, nil}
+        sep ->
+          {env, sep} = parser_to_ast(env, quote do ignore(unquote(sep)) |> unquote(parser) end)
+          f_ast = quote do fn context -> context |> unquote(sep) end end
+          {env, f_ast}
+      end
+
+    context_if(env) do
+      quote do
+        case do
+          context -> unquote(:'$repeat$')(unquote(fsep), unquote(fparser), unquote(minimum), unquote(maximum), context, 0)
         end
       end
     end
