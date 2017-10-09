@@ -867,6 +867,109 @@ defmodule ExSpirit.Parser do
     end
   end
 
+  @doc """
+  """
+  defmacro parse(rest, parser, opts \\ []), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro valid_context?(context_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro valid_context_matcher(), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro skip(context_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro seq(context_ast, sequence), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro alt(context_ast, alternatives), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro tag(context_ast, tag_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro no_skip(context_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro skipper(context_ast, parser_ast, skipper_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro ignore(context_ast, parser_ast, opts \\ []), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro branch(context_ast, parser_ast, symbol_map_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro expect(context_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro repeat(context_ast, parser_ast, minimum \\ 0, maximum \\ -1), do: raise "Ooops."
+
+  @doc """
+  """
+  def repeatFn(context, parser, minimum \\ 0, maximum \\ -1), do: raise "Ooops."
+
+  @doc """
+  """
+  def success(context, value \\ nil), do: raise "Ooops."
+
+  @doc """
+  """
+  def fail(context, reason \\ nil), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro pipe_context_into(context_ast, mapper_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro pipe_result_into(context_ast, mapper_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro pipe_context_around(context_ast, mapper_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro put_state(context_ast, key, from), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro push_state(context_ast, key, from), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro get_state_into(context_ast, key, into), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro lookahead(context_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro lookahead_not(context_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro lexeme(context_ast, parser_ast), do: raise "Ooops."
+
+  @doc """
+  """
+  defmacro eoi(context_ast, opts \\ []), do: raise "Ooops."
 
   defmacro __using__(opts) do
     text_use_ast = if(opts[:text], do: quote(do: use ExSpirit.Parser.Text), else: nil)
