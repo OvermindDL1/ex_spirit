@@ -520,6 +520,7 @@ defmodule ExSpirit.Parser.Text do
             }
         end
       end
+
       defp symbols_(%{rest: <<c::utf8, rest::binary>>} = context, map) do
         case map[c] do
           nil ->
@@ -530,13 +531,13 @@ defmodule ExSpirit.Parser.Text do
                 }
               parser when is_function(parser, 1) ->
                 %{context |
-                  position: context.position + byte_size(<<c::utf8>>),
+                  position: context.position,
                   column: if(c===?\n, do: 1, else: context.column+1),
                   line: context.line + if(c===?\n, do: 1, else: 0),
                 } |> parser.()
               value ->
                 %{context |
-                  position: context.position + byte_size(<<c::utf8>>),
+                  position: context.position,
                   column: if(c===?\n, do: 1, else: context.column+1),
                   line: context.line + if(c===?\n, do: 1, else: 0),
                   result: value,
