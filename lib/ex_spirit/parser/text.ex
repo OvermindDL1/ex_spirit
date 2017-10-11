@@ -520,6 +520,7 @@ defmodule ExSpirit.Parser.Text do
             }
         end
       end
+
       defp symbols_(%{rest: <<c::utf8, rest::binary>>} = context, map) do
         case map[c] do
           nil ->
@@ -529,18 +530,9 @@ defmodule ExSpirit.Parser.Text do
                   error: %ExSpirit.Parser.ParseException{message: "Tried matching out symbols and got to `#{<<c::utf8>>}` but failed to find it in `#{inspect map}`", context: context},
                 }
               parser when is_function(parser, 1) ->
-                %{context |
-                  position: context.position + byte_size(<<c::utf8>>),
-                  column: if(c===?\n, do: 1, else: context.column+1),
-                  line: context.line + if(c===?\n, do: 1, else: 0),
-                } |> parser.()
+                parser.(context)
               value ->
-                %{context |
-                  position: context.position + byte_size(<<c::utf8>>),
-                  column: if(c===?\n, do: 1, else: context.column+1),
-                  line: context.line + if(c===?\n, do: 1, else: 0),
-                  result: value,
-                }
+                %{context | result: value}
             end
           submap ->
             %{context |

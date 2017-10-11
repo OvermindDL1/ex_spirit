@@ -39,6 +39,7 @@ defmodule ExSpirit.Mixfile do
   defp deps do
     [
       {:ex_doc, "~> 0.17", only: [:dev]},
+      {:stream_data, "0.3.0", only: [:test]},
       {:cortex, "~> 0.2.0", only: [:dev, :test]}
     ]
   end
