@@ -37,6 +37,105 @@ defmodule ExSpirit.Parser do
   """
 
   defmodule Context do
+    @moduledoc """
+    This structure carries the state of the parser.
+    Contains the following keys:
+
+    * `:filename` - the name of the file (or `"<unknown>"` if no file is specified)
+    * `:position` - index of the current byte in the input.
+    * `:line` - current line number (starting at `1`)
+    * `:column` - current column number (starting at `1`)
+    * `:rest` - what's left of the input at this point
+    * `:skipper` - the parser to be used as skipper
+    * `:result` - the result at this point
+    * `:error` - the error at this point. If there is no error, it will be `nil`.
+      you can match on this key to see if the previous parser has failed.
+      If the following matches, the parser hasn't failed: `%{error: nil} = context`.
+    * `:rulestack` - The stack of rules at the current position.
+      Useful for debugging purposes
+    * `:state` - <TODO>
+    * `:userdata` - arbitrary data, defined by the user.
+      This is useful for a number of things, like keeping track of indentation levels
+      in indentation-sensitive languages, like [Python], [Haskell] or [Pug].
+
+    [Python]: https://www.python.org/
+    [Haskell]: https://www.haskell.org/
+    [Pug]: https://pugjs.org/api/getting-started.html
+
+    The `Context` is always available at any moment, and ExSpirit provides
+    certain utilities to make it easy to access and update the context.
+
+    In fact, ExSprit is a very general parser that can be viewed as a
+    pipeline composed of a sequence of transformations, each of which
+    takes up a context and return a new context:
+
+        new_context = parse_rule(old_context)
+
+    The new context might depend not only on the remainder of the input (`:rest`),
+    but also on any of the values contained in the context.
+    This is what makes it possible to use ExSpirit for context-sensitive languages.
+    Many parsers hide the context from the user.
+    While hiding the context *might* create a cleaner API, it makes it harder
+    to have good error reporting and to store position information along the parse tree.
+    It also makes it impossible to parse context-sensitive languages, such as
+    XML, HTML, as well as most indentation-sensitive languages (as described above).
+    ExSpirit, being a fully general parser, has no such limitations.
+
+    When parsing context-free languages (like many programming languages),
+    you don't need anything more powerful than a PEG parser, which doesn't require
+    access to the context, except maybe for position tagging.
+
+    In that case, you can use ExSpirit while ignoring the context.
+    It will be transparently threaded through your rules, and you can focus
+    only on the stream you're parsing, and ignore the other parameters.
+    Just imagine that the parsers are taking up elements of a stream
+    (e.g. characters from a string) and returning a result.
+
+    ## State System
+
+    The state system uses the following parsers to update the state:
+
+    * `ExSpirit.Parser.put_state/3`
+    * `ExSpirit.Parser.push_state/3`
+
+    And the following parser tp get the state into another parser:
+
+    * `ExSpirit.Parser.get_state_into/3`
+
+    The state system can be very useful in context-sensitive languages, such as XML.
+    An XML document is composed of matched pairs of opening and closing tags
+    of the form: `<tag>...</tag>`. The opening tag must match the closing tag.
+
+    This can't be done without access to the state, because otherwise the parser
+    that parses the closing tag would be unaware of what the opening tag was.
+
+    Let's look at the following simple XML parser example (full code [here][github_example])
+
+
+        defmodule SimpleXML do
+          use ExSpirit.Parser, text: true
+
+          defrule text( chars(-?<) )
+          defrule tag_name( chars([?a..?z, ?A..?Z, ?0..?9, ?_, ?-]) )
+
+          defrule tag(
+            # We put the result of the parser into the state...
+            lit(?<) |> tag_name() |> put_state(:tagname, :result) |> lit(?>) |> expect(seq([
+              # ... we get the restult into the state, and feed it
+              # into the parser responsible for parsing the closing tag
+              get_state_into(:tagname, tag(&1, repeat(node_()))),
+              lit("</"), get_state_into(:tagname, lit(&1)), lit(?>)
+            ]))
+          )
+
+          defrule node_(
+            alt([
+              tag(),
+              text(),
+            ])
+          )
+        end
+    """
     defstruct(
       filename: "<unknown>",
       position: 0, # In bytes
