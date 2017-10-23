@@ -624,8 +624,8 @@ defmodule ExSpirit.Parser do
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("do nope", alt([ lit("do ") |> uint(), lit("blah") ]))
       iex> %ExSpirit.Parser.ParseException{} = context.error
-      iex> {context.error.message, context.result, context.rest}
-      {"literal `blah` did not match the input", nil, "do nope"}
+      iex> {context.error.message =~ "Alt failed all branches:", context.result, context.rest}
+      {true, nil, "do nope"}
   """
   defmacro expect(context_ast, parser_ast) do
     _ignore = {context_ast, parser_ast}
@@ -1019,23 +1019,44 @@ defmodule ExSpirit.Parser do
         quote location: :keep do
           case unquote(context_ast) do
             %{error: nil} = unquote(context_binding) ->
-              unquote(context_binding) |> unquote(alt_expand(context_binding, first_choice, rest_choices))
+              unquote(context_binding) |> unquote(alt_expand(context_binding, [], first_choice, rest_choices))
             bad_context -> bad_context
           end
         end
       end
 
-      defp alt_expand(original_context_ast, this_ast, [next_ast | rest_ast]) do
+      defp alt_expand(original_context_ast, err_contexts, this_ast, [next_ast | rest_ast]) do
+        bad_context = Macro.var(String.to_atom("bad_context_#{:erlang.unique_integer([:positive])}"), :alt)
         quote location: :keep do
           unquote(this_ast) |> case do
             %{error: nil} = good_context -> good_context
             %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
-            _bad_context -> unquote(original_context_ast) |> unquote(alt_expand(original_context_ast, next_ast, rest_ast))
+            unquote(bad_context) ->
+              unquote(original_context_ast)
+              |> unquote(alt_expand(original_context_ast, [bad_context | err_contexts], next_ast, rest_ast))
           end
         end
       end
-      defp alt_expand(_context_ast, this_ast, []) do
-        this_ast
+      defp alt_expand(original_context_ast, err_contexts, this_ast, []) do
+        bad_context = Macro.var(String.to_atom("bad_context_#{:erlang.unique_integer([:positive])}"), :alt)
+        err_contexts = :lists.reverse(err_contexts, [bad_context])
+        quote location: :keep do
+          unquote(this_ast) |> case do
+            %{error: nil} = good_context -> good_context
+            %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
+            unquote(bad_context) ->
+              %{unquote(original_context_ast)|
+                result: nil,
+                error: %ExSpirit.Parser.ParseException{
+                  message: "Alt failed all branches:\n\t\t#{Enum.join(unquote(
+                    Enum.map(err_contexts, &quote(do: unquote(&1).error.message))
+                  ), "\n\t\t")}",
+                  context: unquote(original_context_ast),
+                  extradata: unquote(err_contexts)
+                },
+              }
+          end
+        end
       end
 
 
