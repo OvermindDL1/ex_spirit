@@ -17,12 +17,14 @@ defmodule ExSpirit.Parser.Text do
   ```elixir
 
     # `lit` matches a specific string or character
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test 42", lit("Test"))
     iex> {context.error, context.result, context.rest}
     {nil, nil, " 42"}
 
     # `lit` matches a specific string or character
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test 42", lit(?T))
     iex> {context.error, context.result, context.rest}
@@ -50,24 +52,28 @@ defmodule ExSpirit.Parser.Text do
   ```elixir
 
     # `uint` parses out an unsigned integer, default radix of 10 with a min size of 1 and max of unlimited
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42", uint())
     iex> {context.error, context.result, context.rest}
     {nil, 42, ""}
 
     # `uint` parsing out base-2
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("101", uint(2))
     iex> {context.error, context.result, context.rest}
     {nil, 5, ""}
 
     # `uint` parsing out base-16 lower-case, can be mixed too
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("ff", uint(16))
     iex> {context.error, context.result, context.rest}
     {nil, 255, ""}
 
     # `uint` parsing out base-16 upper-case, can be mixed too
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("FFF", uint(16))
     iex> {context.error, context.result, context.rest}
@@ -83,12 +89,14 @@ defmodule ExSpirit.Parser.Text do
   ```elixir
 
     # `char` can parse out any single character
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test", char())
     iex> {context.error, context.result, context.rest}
     {nil, ?T, "est"}
 
     # `char` can parse out any 'specific' single character as well
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test", char(?T))
     iex> {context.error, context.result, context.rest}
@@ -97,18 +105,21 @@ defmodule ExSpirit.Parser.Text do
     # `char` can parse out anything 'but' a 'specific' single character too,
     # just negate it, don't mix positive and negative matchers in the same set
     # unless there is only one negative matcher and it is at the end of the list
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Nope", char(-?T))
     iex> {context.error, context.result, context.rest}
     {nil, ?N, "ope"}
 
     # `char` can parse out any 'specific' single character from a range too
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test", char(?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, ?T, "est"}
 
     # `char` can parse out any but a 'specific' single character from a range
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42", char(-?A..-?Z))
     iex> {context.error, context.result, context.rest}
@@ -116,6 +127,7 @@ defmodule ExSpirit.Parser.Text do
 
     # `char` can parse out any 'specific' single character from a list of
     # characters or ranges too
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test", char([?a..?z, ?T]))
     iex> {context.error, context.result, context.rest}
@@ -123,12 +135,14 @@ defmodule ExSpirit.Parser.Text do
 
     # `char` can parse out any but a 'specific' single character from a list of
     # characters or ranges too
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42", char([?a..?z, -?T]))
     iex> {context.error, context.result, context.rest}
     {nil, ?4, "2"}
 
     # a mixed list is fine if the negated ones are at the end of it, only
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Test", char([?a..?z, ?T, -?A..-?Z]))
     iex> {context.error, context.result, context.rest}
@@ -136,36 +150,42 @@ defmodule ExSpirit.Parser.Text do
 
     # a mixed list is fine if the negated ones are at the end of it, only,
     # here is how a failure looks
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("Rest", char([?a..?z, ?T, -?A..-?Z]))
     iex> {String.starts_with?(context.error.message, "Tried parsing out any of the the characters of"), context.result, context.rest}
     {true, nil, "Rest"}
 
     # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("TEST", chars(?A..?Z))
     iex> {context.error, context.result, context.rest}
     {nil, "TEST", ""}
 
     # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42", chars(?A..?Z, 0))
     iex> {context.error, context.result, context.rest}
     {nil, "", "42"}
 
     # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("ABCDE", chars(?A..?Z, 1, 3))
     iex> {context.error, context.result, context.rest}
     {nil, "ABC", "DE"}
 
     # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("42", chars(?A..?Z))
     iex> {String.starts_with?(context.error.message, "Tried parsing out characters of"), context.result, context.rest}
     {true, nil, "42"}
 
     # `chars` parser is like char but it parses all matching as a binary
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("TEST42", chars(?A..?Z))
     iex> {context.error, context.result, context.rest}
@@ -173,6 +193,7 @@ defmodule ExSpirit.Parser.Text do
 
     # `chars1` parser is like chars but it parses all matching as a binary
     # also takes an initial single-char matcher
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("_TEST42", chars1(?_, ?A..?Z))
     iex> {context.error, context.result, context.rest}
@@ -180,6 +201,7 @@ defmodule ExSpirit.Parser.Text do
 
     # `chars1` parser is like chars but it parses all matching as a binary
     # also takes an initial single-char matcher
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> context = parse("_TEST42", chars1([?a-?z, ?_], [?_, ?A..?Z]))
     iex> {context.error, context.result, context.rest}
@@ -191,6 +213,7 @@ defmodule ExSpirit.Parser.Text do
     # stream and match it on the TreeMap to find the longest-matching string,
     # then it will take the return value, if a function then it will run it as
     # as parserFn, else it will return it as a value
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> alias ExSpirit.TreeMap, as: TreeMap
     iex> symbol_TreeMap = TreeMap.new() |> TreeMap.add_text("int", &uint(&1)) |> TreeMap.add_text("char", &char(&1))
@@ -207,6 +230,7 @@ defmodule ExSpirit.Parser.Text do
     iex> {String.starts_with?(context.error.message, "Tried matching out symbols and got the end of the line but failed to find a value"), context.result, context.rest}
     {true, nil, ""}
 
+    iex> import ExSpirit.Parser
     iex> import ExSpirit.Tests.Parser
     iex> alias ExSpirit.TreeMap, as: TreeMap
     iex> symbol_TreeMap = TreeMap.new() |> TreeMap.add_text("let", 1) |> TreeMap.add_text("letmap", 2) |> TreeMap.add_text("", 0)

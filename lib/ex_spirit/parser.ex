@@ -235,8 +235,8 @@ defmodule ExSpirit.Parser do
 
   All of the following examples use this definition of rules in a module:
 
-      defmodule ExSpirit.Tests.Parser do
-        use ExSpirit.Parser, text: true
+      defmodule ExSpirit.Parser do
+        use ExSpirit.Tests.Parser, text: true
 
         defrule testrule(
           seq([ uint(), lit(?\s), uint() ])
@@ -263,6 +263,7 @@ defmodule ExSpirit.Parser do
     ## Examples
 
       # You can use `defrule`s as any other terminal parser
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 64", testrule())
       iex> {contexts.error, contexts.result, contexts.rest}
@@ -270,24 +271,28 @@ defmodule ExSpirit.Parser do
 
       # `defrule`'s also set up a stack of calls down a context so you know
       # 'where' an error occured, so name the rules descriptively
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 fail", testrule())
       iex> {contexts.error.context.rulestack, contexts.result, contexts.rest}
       {[:testrule], nil, "fail"}
 
       # `defrule`s can map the result to return a different one:
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 64", testrule_pipe())
       iex> {contexts.error, contexts.result, contexts.rest}
       {nil, [2, 24], ""}
 
       # `defrule`s can also operate over the context itself to do anything
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 64", testrule_fun())
       iex> {contexts.error, contexts.result, contexts.rest}
       {nil, {"altered", [42, 64]}, ""}
 
       # `defrule`s can also be a context function by only passing in `context`
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 64", testrule_context())
       iex> {contexts.error, contexts.result, contexts.rest}
@@ -295,6 +300,7 @@ defmodule ExSpirit.Parser do
 
       # `defrule`s with a context can have other arguments too, but context
       # must always be first
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 64", testrule_context_arg(:success))
       iex> {contexts.error, contexts.result, contexts.rest}
@@ -370,42 +376,71 @@ defmodule ExSpirit.Parser do
   The parse function is applied to the input and a parser call, such as in:
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42", uint())
       iex> {context.error, context.result, context.rest}
       {nil, 42, ""}
   """
   defmacro parse(rest, parser, opts \\ []) do
-    _ignore = {rest, parser, opts}
-    raise %ImportInsteadOfUseException{name: "parse", kind: "macro"}
+    filename = opts[:filename] || quote do "<unknown>" end
+    skipper = case opts[:skipper] do
+      nil -> nil
+      fun -> quote do fn context -> context |> unquote(fun) end end
+    end
+    quote location: :keep do
+      %ExSpirit.Parser.Context{
+        filename: unquote(filename),
+        skipper: unquote(skipper),
+        rest: unquote(rest),
+      } |> unquote(parser)
+    end
   end
 
   @doc """
   Tests whether the context is valid.
   """
   defmacro valid_context?(context_ast) do
-    _ignore = {context_ast}
-    raise %ImportInsteadOfUseException{name: "valid_context?", kind: "macro"}
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{error: nil} -> true
+        _ -> false
+      end
+    end
   end
 
   @doc false
-  defmacro valid_context_matcher() do
-    _ignore = {}
-    raise %ImportInsteadOfUseException{name: "valid_context_matcher?", kind: "macro"}
-  end
+  defmacro valid_context_matcher(), do: quote(do: %{error: nil})
 
   @doc """
   Runs the skipper now
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("  a", skip(), skipper: chars(?\\s, 0))
       iex> {context.error, context.result, context.rest}
       {nil, nil, "a"}
   """
   defmacro skip(context_ast) do
-    _ignore = {context_ast}
-    raise %ImportInsteadOfUseException{name: "skip", kind: "macro"}
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{skipper: nil, error: nil} = context -> context
+        %{skipper: skipper, error: nil} = context ->
+          case %{context | skipper: nil} |> skipper.() do
+            %{error: nil} = skipped_context ->
+              %{skipped_context |
+                skipper: context.skipper,
+                result: context.result,
+              }
+            bad_skipped_context ->
+              %{bad_skipped_context |
+                skipper: context.skipper,
+              }
+          end
+        bad_context -> bad_context
+      end
+    end
   end
 
   @doc """
@@ -420,20 +455,48 @@ defmodule ExSpirit.Parser do
       # `seq` parses a sequence returning the return of all of them, removing nils,
       # as a list if more than one or the raw value if only one, if any fail then
       # all fail.
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42 64", seq([uint(), lit(" "), uint()]))
       iex> {contexts.error, contexts.result, contexts.rest}
       {nil, [42, 64], ""}
 
       # `seq` Here is sequence only returning a single value
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("42Test", seq([uint(), lit("Test")]))
       iex> {contexts.error, contexts.result, contexts.rest}
       {nil, 42, ""}
   """
-  defmacro seq(context_ast, sequence) do
-    _ignore = {context_ast, sequence}
-    raise %ImportInsteadOfUseException{name: "seq", kind: "macro"}
+  defmacro seq(context_ast, [first_seq | rest_seq]) do
+    # context_binding = quote do context end
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{error: nil} = context ->
+          context |> unquote(seq_expand(first_seq, rest_seq))
+        bad_context -> bad_context
+      end
+    end
+  end
+
+  defp seq_expand(this_ast, [next_ast | rest_ast]) do
+    quote do
+      unquote(this_ast) |> case do
+        %{error: nil, result: nil} = good_context ->
+          good_context |> unquote(seq_expand(next_ast, rest_ast))
+        %{error: nil, result: result} = good_context ->
+          case good_context |> unquote(seq_expand(next_ast, rest_ast)) do
+            %{error: nil, result: nil} = return_context -> %{return_context | result: result}
+            %{error: nil, result: results} = return_context when is_list(results) -> %{return_context | result: [result | results]}
+            %{error: nil, result: results} = return_context -> %{return_context | result: [result, results]}
+            bad_context -> bad_context
+          end
+        bad_context -> bad_context
+      end
+    end
+  end
+  defp seq_expand(this_ast, []) do
+    this_ast
   end
 
   @doc """
@@ -442,20 +505,62 @@ defmodule ExSpirit.Parser do
   of the last one.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("FF", alt([uint(16), lit("Test")]))
       iex> {contexts.error, contexts.result, contexts.rest}
       {nil, 255, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> contexts = parse("Test", alt([uint(16), lit("Test")]))
       iex> {contexts.error, contexts.result, contexts.rest}
       {nil, nil, ""}
 
   """
-  defmacro alt(context_ast, alternatives) do
-    _ignore = {context_ast, alternatives}
-    raise %ImportInsteadOfUseException{name: "alt", kind: "macro"}
+  defmacro alt(context_ast, [first_choice | rest_choices]) do
+    context_binding = Macro.var(:original_context, :alt)
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{error: nil} = unquote(context_binding) ->
+          unquote(context_binding) |> unquote(alt_expand(context_binding, [], first_choice, rest_choices))
+        bad_context -> bad_context
+      end
+    end
+  end
+
+  defp alt_expand(original_context_ast, err_contexts, this_ast, [next_ast | rest_ast]) do
+    bad_context = Macro.var(String.to_atom("bad_context_#{:erlang.unique_integer([:positive])}"), :alt)
+    quote location: :keep do
+      unquote(this_ast) |> case do
+        %{error: nil} = good_context -> good_context
+        %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
+        unquote(bad_context) ->
+          unquote(original_context_ast)
+          |> unquote(alt_expand(original_context_ast, [bad_context | err_contexts], next_ast, rest_ast))
+      end
+    end
+  end
+  defp alt_expand(original_context_ast, err_contexts, this_ast, []) do
+    bad_context = Macro.var(String.to_atom("bad_context_#{:erlang.unique_integer([:positive])}"), :alt)
+    err_contexts = :lists.reverse(err_contexts, [bad_context])
+    quote location: :keep do
+      unquote(this_ast) |> case do
+        %{error: nil} = good_context -> good_context
+        %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
+        unquote(bad_context) ->
+          %{unquote(original_context_ast)|
+            result: nil,
+            error: %ExSpirit.Parser.ParseException{
+              message: "Alt failed all branches:\n\t\t#{Enum.join(unquote(
+                Enum.map(err_contexts, &quote(do: unquote(&1).error.message))
+              ), "\n\t\t")}",
+              context: unquote(original_context_ast),
+              extradata: unquote(err_contexts)
+            },
+          }
+      end
+    end
   end
 
   @doc """
@@ -464,14 +569,19 @@ defmodule ExSpirit.Parser do
   and the second is the result of the parser.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("ff", tag(:integer, uint(16)))
       iex> {context.error, context.result, context.rest}
       {nil, {:integer, 255}, ""}
   """
   defmacro tag(context_ast, tag_ast, parser_ast) do
-    _ignore = {context_ast, tag_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "tag", kind: "macro"}
+    quote location: :keep do
+      case unquote(context_ast) |> unquote(parser_ast) do
+        %{error: nil} = good_context -> %{good_context | result: {unquote(tag_ast), good_context.result}}
+        bad_context -> bad_context
+      end
+    end
   end
 
   @doc """
@@ -481,14 +591,19 @@ defmodule ExSpirit.Parser do
   Good to parse non-skippable content within a large parser.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse(" Test:42 ", lit("Test:") |> no_skip(uint()), skipper: lit(?\\s))
       iex> {context.error, context.result, context.rest}
       {nil, 42, " "}
   """
   defmacro no_skip(context_ast, parser_ast) do
-    _ignore = {context_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "no_skip", kind: "macro"}
+    quote location: :keep do
+      context_no_skip = unquote(context_ast)
+      noskip_context = %{context_no_skip | skipper: nil}
+      return_context = noskip_context |> unquote(parser_ast)
+      %{return_context | skipper: context_no_skip.skipper}
+    end
   end
 
   @doc """
@@ -497,14 +612,20 @@ defmodule ExSpirit.Parser do
 
   ### Examples
       # You can change a skipper for a parser as well with `skipper`
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse(" Test:\t42 ", lit("Test:") |> skipper(uint(), lit(?\\t)), skipper: lit(?\\s))
       iex> {context.error, context.result, context.rest}
       {nil, 42, " "}
   """
   defmacro skipper(context_ast, parser_ast, skipper_ast) do
-    _ignore = {context_ast, parser_ast, skipper_ast}
-    raise %ImportInsteadOfUseException{name: "skipper", kind: "macro"}
+    quote location: :keep do
+      context_skipper = unquote(context_ast)
+      skipper = fn context -> context |> unquote(skipper_ast) end
+      newskip_context = %{context_skipper | skipper: skipper}
+      return_context = newskip_context |> unquote(parser_ast)
+      %{return_context | skipper: context_skipper.skipper}
+    end
   end
 
   @doc """
@@ -514,20 +635,28 @@ defmodule ExSpirit.Parser do
 
   ## Examples
       # `ignore` will run the parser but return no result
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("Test", ignore(char([?a..?z, ?T])))
       iex> {context.error, context.result, context.rest}
       {nil, nil, "est"}
 
       # `ignore` will pass on the previous result if you want it to
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42Test", uint() |> ignore(char([?a..?z, ?T]), pass_result: true))
       iex> {context.error, context.result, context.rest}
       {nil, 42, "est"}
   """
   defmacro ignore(context_ast, parser_ast, opts \\ []) do
-    _ignore = {context_ast, parser_ast, opts}
-    raise %ImportInsteadOfUseException{name: "ignore", kind: "macro"}
+    quote location: :keep do
+      case unquote(context_ast) do
+        %{error: nil} = context ->
+          return_context = context |> unquote(parser_ast)
+          %{return_context | result: unquote(if(opts[:pass_result], do: quote(do: unquote(context_ast).result), else: quote(do: nil)))}
+        bad_context -> bad_context
+      end
+    end
   end
 
   @doc """
@@ -551,6 +680,7 @@ defmodule ExSpirit.Parser do
   parser.
 
   ### Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> symbol_map = %{?b => &uint(&1, 2), ?d => &uint(&1, 10), ?x => &uint(&1, 16)}
       iex> context = parse("b101010", branch(char(), symbol_map))
@@ -566,6 +696,7 @@ defmodule ExSpirit.Parser do
       iex> {context.error.message, context.result, context.rest}
       {"Tried to branch to `97` but it was not found in the symbol_map", nil, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> symbol_mapper = fn
       iex>   ?b -> &uint(&1, 2)
@@ -587,8 +718,28 @@ defmodule ExSpirit.Parser do
       {"Tried to branch to `97` but it was not found in the symbol_map", nil, ""}
   """
   defmacro branch(context_ast, parser_ast, symbol_map_ast) do
-    _ignore = {context_ast, parser_ast, symbol_map_ast}
-    raise %ImportInsteadOfUseException{name: "branch", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      symbol_map = unquote(symbol_map_ast)
+      case context |> unquote(parser_ast) do
+        %{error: nil, result: lookup} = lookup_context ->
+          if is_function(symbol_map, 1) do
+            symbol_map.(lookup)
+          else
+            symbol_map[lookup]
+          end
+          |> case do
+            nil ->
+              %{lookup_context |
+                result: nil,
+                error:  %ExSpirit.Parser.ParseException{message: "Tried to branch to `#{inspect lookup}` but it was not found in the symbol_map", context: context, extradata: symbol_map},
+              }
+            found_parser_fun ->
+              lookup_context |> found_parser_fun.()
+          end
+        bad_context -> bad_context
+      end
+    end
   end
 
   @doc """
@@ -603,17 +754,20 @@ defmodule ExSpirit.Parser do
   trying other parsers that you know will not succeed anyway.
 
   ### Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("do 10", lit("do ") |> expect(uint()))
       iex> {context.error, context.result, context.rest}
       {nil, 10, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("do nope", lit("do ") |> expect(uint()))
       iex> %ExSpirit.Parser.ExpectationFailureException{} = context.error
       iex> {context.error.message, context.result, context.rest}
       {"Parsing uint with radix of 10 had 0 digits but 1 minimum digits were required", nil, "nope"}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("do nope", alt([ lit("do ") |> expect(uint()), lit("blah") ]))
       iex> %ExSpirit.Parser.ExpectationFailureException{} = context.error
@@ -621,6 +775,7 @@ defmodule ExSpirit.Parser do
       {"Parsing uint with radix of 10 had 0 digits but 1 minimum digits were required", nil, "nope"}
 
       # Difference without the `expect`
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("do nope", alt([ lit("do ") |> uint(), lit("blah") ]))
       iex> %ExSpirit.Parser.ParseException{} = context.error
@@ -628,8 +783,17 @@ defmodule ExSpirit.Parser do
       {true, nil, "do nope"}
   """
   defmacro expect(context_ast, parser_ast) do
-    _ignore = {context_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "expect", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        case context |> unquote(parser_ast) do
+          %{error: nil} = good_context -> good_context
+          bad_context -> ExSpirit.Parser.ExpectationFailureException.makeContextFailed(bad_context)
+        end
+      end
+    end
   end
 
   @doc """
@@ -643,44 +807,52 @@ defmodule ExSpirit.Parser do
   `0`, and the maximum number of repeats, default of `-1` (infinite).
 
   ## Examples
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTTX", repeat(char(?T)))
       iex> {context.error, context.result, context.rest}
       {nil, [?T, ?T, ?T], "X"}
 
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTTX", repeat(char(?T), 1))
       iex> {context.error, context.result, context.rest}
       {nil, [?T, ?T, ?T], "X"}
 
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTTX", repeat(char(?T), 1, 10))
       iex> {context.error, context.result, context.rest}
       {nil, [?T, ?T, ?T], "X"}
 
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTTX", repeat(char(?T), 1, 2))
       iex> {context.error, context.result, context.rest}
       {nil, [?T, ?T], "TX"}
 
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTTX", repeat(char(?T), 4))
       iex> {context.error.message, context.result, context.rest}
       {"Repeating over a parser failed due to not reaching the minimum amount of 4 with only a repeat count of 3", nil, "X"}
 
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTT", repeat(char(?T), 4))
       iex> {context.error.message, context.result, context.rest}
       {"Repeating over a parser failed due to not reaching the minimum amount of 4 with only a repeat count of 3", nil, ""}
 
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("", repeat(char(?T)))
       iex> {context.error, context.result, context.rest}
       {nil, [], ""}
   """
   defmacro repeat(context_ast, parser_ast, minimum \\ 0, maximum \\ -1) do
-    _ignore = {context_ast, parser_ast, minimum, maximum}
-    raise %ImportInsteadOfUseException{name: "repeat", kind: "macro"}
+    quote location: :keep do
+      unquote(context_ast) |> repeatFn(fn(c) -> c |> unquote(parser_ast) end, unquote(minimum), unquote(maximum))
+    end
   end
 
   @doc """
@@ -691,14 +863,38 @@ defmodule ExSpirit.Parser do
   See `ExSpirit.Parser.repeat/4` for more.
 
   ## Examples
+      iex> import ExSpirit.Parser, only: :macros
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("TTTX", repeatFn(fn c -> c |> char(?T) end))
       iex> {context.error, context.result, context.rest}
       {nil, [?T, ?T, ?T], "X"}
   """
-  def repeatFn(context, parser, minimum \\ 0, maximum \\ -1) do
-    _ignore = {context, parser, minimum, maximum}
-    raise %ImportInsteadOfUseException{name: "repeatFn", kind: "function"}
+  # TODO:  Refactor
+  # Until refactored, keep in sync with the implementation in `__using__`
+  def repeatFn(context, parser, minimum \\ 0, maximum \\ -1) when is_function(parser, 1) do
+    repeatFn(context, parser, minimum, maximum, [], 0)
+  end
+  defp repeatFn(context, _parser, _minimum, maximum, results, maximum) do
+    %{context |
+      result: :lists.reverse(results),
+    }
+  end
+  defp repeatFn(context, parser, minimum, maximum, results, count) do
+    case context |> parser.() do
+      %{error: nil, result: result} = good_context -> repeatFn(good_context, parser, minimum, maximum, [result | results], count + 1)
+      %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
+      bad_context ->
+        if minimum <= count do
+          %{context |
+            result: :lists.reverse(results),
+          }
+        else
+          %{bad_context |
+            result: nil,
+            error:  %ExSpirit.Parser.ParseException{message: "Repeating over a parser failed due to not reaching the minimum amount of #{minimum} with only a repeat count of #{count}", context: context, extradata: count},
+          }
+        end
+    end
   end
 
   @doc """
@@ -706,14 +902,19 @@ defmodule ExSpirit.Parser do
   successfully like a parsed value.
 
   ## Examples
-      iex> import ExSpirit.Tests.Parser
+      iex> import ExSpirit.Parser
       iex> context = parse("", success(42))
       iex> {context.error, context.result, context.rest}
       {nil, 42, ""}
   """
   def success(context, value \\ nil) do
-    _ignore = {context, value}
-    raise %ImportInsteadOfUseException{name: "success", kind: "function"}
+    if !valid_context?(context) do
+      context
+    else
+      %{context |
+        result: value
+      }
+    end
   end
 
   @doc """
@@ -721,14 +922,20 @@ defmodule ExSpirit.Parser do
 
   ## Examples
 
-      iex> import ExSpirit.Tests.Parser
+      iex> import ExSpirit.Parser
       iex> context = parse("", fail(42))
       iex> {context.error.extradata, context.result, context.rest}
       {42, nil, ""}
   """
   def fail(context, reason \\ nil) do
-    _ignore = {context, reason}
-    raise %ImportInsteadOfUseException{name: "fail", kind: "function"}
+    if !valid_context?(context) do
+      context
+    else
+      %{context |
+        result: nil,
+        error:  %ExSpirit.Parser.ParseException{message: "Fail parser called with user reason of: #{inspect reason}", context: context, extradata: reason},
+      }
+    end
   end
 
   @doc """
@@ -737,30 +944,52 @@ defmodule ExSpirit.Parser do
   TODO: Expand this *a lot*.
 
   ### Examples
-      iex> import ExSpirit.Tests.Parser
+      iex> import ExSpirit.Parser
       iex> fun = fn c -> %{c|result: 42} end
       iex> context = parse("a", pipe_context_into(fun.()))
       iex> {context.error, context.result, context.rest}
       {nil, 42, "a"}
   """
   defmacro pipe_context_into(context_ast, mapper_ast) do
-    _ignore = {context_ast, mapper_ast}
-    raise %ImportInsteadOfUseException{name: "pipe_context_into", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        context |> unquote(mapper_ast)
+      end
+    end
   end
 
   @doc """
   Runs a function with the result
 
   ### Examples
-      iex> import ExSpirit.Tests.Parser
+      iex> import ExSpirit.Parser
       iex> fun = fn nil -> 42 end
       iex> context = parse("a", pipe_result_into(fun.()))
       iex> {context.error, context.result, context.rest}
       {nil, 42, "a"}
   """
   defmacro pipe_result_into(context_ast, mapper_ast) do
-    _ignore = {context_ast, mapper_ast}
-    raise %ImportInsteadOfUseException{name: "pipe_result_into", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        result = context.result |> unquote(mapper_ast)
+        if Exception.exception?(result) do
+          %{context |
+            error: result,
+            result: nil,
+          }
+        else
+          %{context |
+            result: result,
+          }
+        end
+      end
+    end
   end
 
   @doc """
@@ -768,6 +997,7 @@ defmodule ExSpirit.Parser do
   function call.
 
   ### Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> fun = fn {pre, post} -> %{post|result: {pre, post}} end
       iex> context = parse("42", pipe_context_around(fun.(), uint()))
@@ -776,36 +1006,90 @@ defmodule ExSpirit.Parser do
       {nil, 1, 3, ""}
   """
   defmacro pipe_context_around(context_ast, mapper_ast, parser_ast) do
-    _ignore = {context_ast, mapper_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "pipe_context_around", kind: "macro"}
+    quote location: :keep do
+      context_map_context_around = unquote(context_ast)
+      if !valid_context?(context_map_context_around) do
+        context_map_context_around
+      else
+        case context_map_context_around |> unquote(parser_ast) do
+          %{error: nil} = new_context ->
+            {context_map_context_around, new_context} |> unquote(mapper_ast)
+          bad_context -> bad_context
+        end
+      end
+    end
   end
 
   @doc """
   Puts something into the state at the specified key
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42", uint() |> put_state(:test, :result))
       iex> {context.error, context.result, context.rest, context.state}
       {nil, 42, "", %{test: 42}}
   """
-  defmacro put_state(context_ast, key, from) do
-    _ignore = {context_ast, key, from}
-    raise %ImportInsteadOfUseException{name: "put_state", kind: "macro"}
+  defmacro put_state(context_ast, key, from)
+  defmacro put_state(context_ast, key, :context) do
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        %{context |
+          state: Map.put(context.state, unquote(key), context),
+        }
+      end
+    end
+  end
+  defmacro put_state(context_ast, key, :result) do
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        %{context |
+          state: Map.put(context.state, unquote(key), context.result),
+        }
+      end
+    end
   end
 
   @doc """
   Puts something into the state at the specified key
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42", uint() |> push_state(:test, :result))
       iex> {context.error, context.result, context.rest, context.state}
       {nil, 42, "", %{test: [42]}}
   """
-  defmacro push_state(context_ast, key, from) do
-    _ignore = {context_ast, key, from}
-    raise %ImportInsteadOfUseException{name: "push_state", kind: "macro"}
+  defmacro push_state(context_ast, key, from)
+  defmacro push_state(context_ast, key, :context) do
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        %{context |
+          state: Map.update(context.state, unquote(key), [context], fn x -> [context | List.wrap(x)] end),
+        }
+      end
+    end
+  end
+  defmacro push_state(context_ast, key, :result) do
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        %{context |
+          state: Map.update(context.state, unquote(key), [context.result], fn x -> [context.result | List.wrap(x)] end),
+        }
+      end
+    end
   end
 
   @doc """
@@ -813,24 +1097,76 @@ defmodule ExSpirit.Parser do
   that are marked with &1-* bindings
 
   ### Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("A:A", char() |> put_state(:test, :result) |> lit(?:) |> get_state_into([:test], char(&1)))
       iex> {context.error, context.result, context.rest}
       {nil, ?A, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("A:B", char() |> put_state(:test, :result) |> lit(?:) |> get_state_into([:test], char(&1)))
       iex> {String.starts_with?(context.error.message, "Tried parsing out any of the the characters of"), context.result, context.rest}
       {true, nil, "B"}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("A:B", char() |> put_state(:test, :result) |> lit(?:) |> get_state_into(:test, :result))
       iex> {context.error, context.result, context.rest}
       {nil, ?A, "B"}
   """
-  defmacro get_state_into(context_ast, key, into) do
-    _ignore = {context_ast, key, into}
-    raise %ImportInsteadOfUseException{name: "get_state_into", kind: "macro"}
+  defmacro get_state_into(context_ast, key, :result) do
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        %{context |
+          result: context.state[unquote(key)]
+        }
+      end
+    end
+  end
+
+  defmacro get_state_into(context_ast, key, :context) do
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        case context.state[unquote(key)] do
+          %ExSpirit.Parser.Context{} = old_context -> old_context
+          _ ->
+            %{context |
+              result: nil,
+              error:  %ExSpirit.Parser.ParseException{message: "Attempted to get a context out of the state at `#{inspect unquote(key)}` but there was no context there", context: context, extradata: key},
+            }
+        end
+      end
+    end
+  end
+
+  defmacro get_state_into(context_ast, keys, parser_ast) do
+    keys = if !is_list(keys), do: [keys], else: keys
+    context_binding = quote do context end
+    parser_ast = Macro.postwalk(parser_ast, fn
+      {:&, _, [0]} -> quote do unquote(context_binding).state end
+      {:&, _, [pos]} = orig_ast ->
+        case Enum.at(keys, pos-1) do
+          nil -> orig_ast
+          {key, default} -> quote do Map.get(unquote(context_binding).state, unquote(key), unquote(default)) end
+          key -> quote do unquote(context_binding).state[unquote(key)] end
+        end
+      ast -> ast
+    end)
+    quote location: :keep do
+      unquote(context_binding) = unquote(context_ast)
+      if !valid_context?(unquote(context_binding)) do
+        unquote(context_binding)
+      else
+        unquote(context_binding) |> unquote(parser_ast)
+      end
+    end
   end
 
   @doc """
@@ -838,19 +1174,34 @@ defmodule ExSpirit.Parser do
   successful.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("AA", lit(?A) |> lookahead(lit(?A)) |> char())
       iex> {context.error, context.result, context.rest}
       {nil, ?A, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("AB", lit(?A) |> lookahead(lit(?A)) |> char())
       iex> {String.starts_with?(context.error.message, "Lookahead failed"), context.result, context.rest}
       {true, nil, "B"}
   """
   defmacro lookahead(context_ast, parser_ast) do
-    _ignore = {context_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "lookahead", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        case context |> unquote(parser_ast) do
+          %{error: nil} -> context
+          bad_context ->
+            %{context |
+              result: nil,
+              error:  %ExSpirit.Parser.ParseException{message: "Lookahead failed", context: context, extradata: bad_context},
+            }
+        end
+      end
+    end
   end
 
   @doc """
@@ -858,33 +1209,71 @@ defmodule ExSpirit.Parser do
   failed.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("AB", lit(?A) |> lookahead_not(lit(?A)) |> char())
       iex> {context.error, context.result, context.rest}
       {nil, ?B, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("AA", lit(?A) |> lookahead_not(lit(?A)) |> char())
       iex> {String.starts_with?(context.error.message, "Lookahead_not failed"), context.result, context.rest}
       {true, nil, "A"}
   """
   defmacro lookahead_not(context_ast, parser_ast) do
-    _ignore = {context_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "lookahead_not", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        case context |> unquote(parser_ast) do
+          %{error: nil} = bad_context ->
+            %{context |
+              result: nil,
+              error:  %ExSpirit.Parser.ParseException{message: "Lookahead_not failed", context: context, extradata: bad_context},
+            }
+          _context -> context
+        end
+      end
+    end
   end
 
   @doc """
   Returns the entire parsed text from the parser, regardless of the actual return value.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("A256B", lexeme(char() |> uint()))
       iex> {context.error, context.result, context.rest}
       {nil, "A256", "B"}
   """
   defmacro lexeme(context_ast, parser_ast) do
-    _ignore = {context_ast, parser_ast}
-    raise %ImportInsteadOfUseException{name: "lexeme", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        case context |> unquote(parser_ast) do
+          %{error: nil} = good_context ->
+            bytes = good_context.position - context.position
+            case context.rest do
+              <<parsed::binary-size(bytes), newRest::binary>> ->
+                %{good_context |
+                  result: parsed,
+                  rest: newRest,
+                }
+              _ ->
+                %{context |
+                  result: nil,
+                  error:  %ExSpirit.Parser.ParseException{message: "Lexeme failed, should be impossible, length needed is #{bytes} but available is only #{byte_size(context.rest)}", context: context, extradata: good_context},
+                }
+            end
+          bad_context -> bad_context
+        end
+      end
+    end
   end
 
   @doc """
@@ -898,257 +1287,61 @@ defmodule ExSpirit.Parser do
   `pass_result` must be set to false to use `result: value` or it is skipped.
 
   ## Examples
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42", uint() |> eoi())
       iex> {context.error, context.result, context.rest}
       {nil, nil, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42", uint() |> eoi(pass_result: true))
       iex> {context.error, context.result, context.rest}
       {nil, 42, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42", uint() |> eoi(result: :success))
       iex> {context.error, context.result, context.rest}
       {nil, :success, ""}
 
+      iex> import ExSpirit.Parser
       iex> import ExSpirit.Tests.Parser
       iex> context = parse("42a", uint() |> eoi())
       iex> {is_map(context.error), context.result, context.rest}
       {true, nil, "a"}
   """
   defmacro eoi(context_ast, opts \\ []) do
-    _ignore = {context_ast, opts}
-    raise %ImportInsteadOfUseException{name: "eoi", kind: "macro"}
+    quote location: :keep do
+      context = unquote(context_ast)
+      if !valid_context?(context) do
+        context
+      else
+        case context do
+          %{rest: ""} ->
+            unquote(if(opts[:pass_result], do: quote(do: context), else: quote(do: %{context | result: unquote(opts[:result])})))
+          _ ->
+            %{context |
+              result: nil,
+              error:  %ExSpirit.Parser.ParseException{message: "eoi failed, not at End Of Input", context: context},
+            }
+        end
+      end
+    end
   end
 
+  @doc """
+  When this module is `use`d then it will import what is required, define some inline functions for speed, and load in
+  other parsers.
+
+  ## Paramters:
+
+  * text: true|false -> Will use the Text Parsing module as well
+  """
   defmacro __using__(opts) do
     text_use_ast = if(opts[:text], do: quote(do: use ExSpirit.Parser.Text), else: nil)
     quote location: :keep do
-      import ExSpirit.Parser, only: [defrule: 1, defrule: 2]
-
-
-      defmacro parse(rest, parser, opts \\ []) do
-        filename = opts[:filename] || quote do "<unknown>" end
-        skipper = case opts[:skipper] do
-          nil -> nil
-          fun -> quote do fn context -> context |> unquote(fun) end end
-        end
-        quote location: :keep do
-          %ExSpirit.Parser.Context{
-            filename: unquote(filename),
-            skipper: unquote(skipper),
-            rest: unquote(rest),
-          } |> unquote(parser)
-        end
-      end
-
-
-      # def valid_context?(%{error: nil}), do: true
-      # def valid_context?(_), do: false
-
-      defmacro valid_context?(context_ast) do
-        quote location: :keep do
-          case unquote(context_ast) do
-            %{error: nil} -> true
-            _ -> false
-          end
-        end
-      end
-
-      defmacro valid_context_matcher(), do: quote(do: %{error: nil})
-
-
-      defmacro skip(context_ast) do
-        quote location: :keep do
-          case unquote(context_ast) do
-            %{skipper: nil, error: nil} = context -> context
-            %{skipper: skipper, error: nil} = context ->
-              case %{context | skipper: nil} |> skipper.() do
-                %{error: nil} = skipped_context ->
-                  %{skipped_context |
-                    skipper: context.skipper,
-                    result: context.result,
-                  }
-                bad_skipped_context ->
-                  %{bad_skipped_context |
-                    skipper: context.skipper,
-                  }
-              end
-            bad_context -> bad_context
-          end
-        end
-      end
-
-
-      defmacro seq(context_ast, [first_seq | rest_seq]) do
-        # context_binding = quote do context end
-        quote location: :keep do
-          case unquote(context_ast) do
-            %{error: nil} = context ->
-              context |> unquote(seq_expand(first_seq, rest_seq))
-            bad_context -> bad_context
-          end
-        end
-      end
-
-      defp seq_expand(this_ast, [next_ast | rest_ast]) do
-        quote do
-          unquote(this_ast) |> case do
-            %{error: nil, result: nil} = good_context ->
-              good_context |> unquote(seq_expand(next_ast, rest_ast))
-            %{error: nil, result: result} = good_context ->
-              case good_context |> unquote(seq_expand(next_ast, rest_ast)) do
-                %{error: nil, result: nil} = return_context -> %{return_context | result: result}
-                %{error: nil, result: results} = return_context when is_list(results) -> %{return_context | result: [result | results]}
-                %{error: nil, result: results} = return_context -> %{return_context | result: [result, results]}
-                bad_context -> bad_context
-              end
-            bad_context -> bad_context
-          end
-        end
-      end
-      defp seq_expand(this_ast, []) do
-        this_ast
-      end
-
-
-      defmacro alt(context_ast, [first_choice | rest_choices]) do
-        context_binding = Macro.var(:original_context, :alt)
-        quote location: :keep do
-          case unquote(context_ast) do
-            %{error: nil} = unquote(context_binding) ->
-              unquote(context_binding) |> unquote(alt_expand(context_binding, [], first_choice, rest_choices))
-            bad_context -> bad_context
-          end
-        end
-      end
-
-      defp alt_expand(original_context_ast, err_contexts, this_ast, [next_ast | rest_ast]) do
-        bad_context = Macro.var(String.to_atom("bad_context_#{:erlang.unique_integer([:positive])}"), :alt)
-        quote location: :keep do
-          unquote(this_ast) |> case do
-            %{error: nil} = good_context -> good_context
-            %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
-            unquote(bad_context) ->
-              unquote(original_context_ast)
-              |> unquote(alt_expand(original_context_ast, [bad_context | err_contexts], next_ast, rest_ast))
-          end
-        end
-      end
-      defp alt_expand(original_context_ast, err_contexts, this_ast, []) do
-        bad_context = Macro.var(String.to_atom("bad_context_#{:erlang.unique_integer([:positive])}"), :alt)
-        err_contexts = :lists.reverse(err_contexts, [bad_context])
-        quote location: :keep do
-          unquote(this_ast) |> case do
-            %{error: nil} = good_context -> good_context
-            %{error: %ExSpirit.Parser.ExpectationFailureException{}} = bad_context -> bad_context
-            unquote(bad_context) ->
-              %{unquote(original_context_ast)|
-                result: nil,
-                error: %ExSpirit.Parser.ParseException{
-                  message: "Alt failed all branches:\n\t\t#{Enum.join(unquote(
-                    Enum.map(err_contexts, &quote(do: unquote(&1).error.message))
-                  ), "\n\t\t")}",
-                  context: unquote(original_context_ast),
-                  extradata: unquote(err_contexts)
-                },
-              }
-          end
-        end
-      end
-
-
-      defmacro tag(context_ast, tag_ast, parser_ast) do
-        quote location: :keep do
-          case unquote(context_ast) |> unquote(parser_ast) do
-            %{error: nil} = good_context -> %{good_context | result: {unquote(tag_ast), good_context.result}}
-            bad_context -> bad_context
-          end
-        end
-      end
-
-
-      defmacro no_skip(context_ast, parser_ast) do
-        quote location: :keep do
-          context_no_skip = unquote(context_ast)
-          noskip_context = %{context_no_skip | skipper: nil}
-          return_context = noskip_context |> unquote(parser_ast)
-          %{return_context | skipper: context_no_skip.skipper}
-        end
-      end
-
-
-      defmacro skipper(context_ast, parser_ast, skipper_ast) do
-        quote location: :keep do
-          context_skipper = unquote(context_ast)
-          skipper = fn context -> context |> unquote(skipper_ast) end
-          newskip_context = %{context_skipper | skipper: skipper}
-          return_context = newskip_context |> unquote(parser_ast)
-          %{return_context | skipper: context_skipper.skipper}
-        end
-      end
-
-
-      defmacro ignore(context_ast, parser_ast, opts \\ []) do
-        quote location: :keep do
-          case unquote(context_ast) do
-            %{error: nil} = context ->
-              return_context = context |> unquote(parser_ast)
-              %{return_context | result: unquote(if(opts[:pass_result], do: quote(do: unquote(context_ast).result), else: quote(do: nil)))}
-            bad_context -> bad_context
-          end
-        end
-      end
-
-
-      defmacro branch(context_ast, parser_ast, symbol_map_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          symbol_map = unquote(symbol_map_ast)
-          case context |> unquote(parser_ast) do
-            %{error: nil, result: lookup} = lookup_context ->
-              if is_function(symbol_map, 1) do
-                symbol_map.(lookup)
-              else
-                symbol_map[lookup]
-              end
-              |> case do
-                nil ->
-                  %{lookup_context |
-                    result: nil,
-                    error:  %ExSpirit.Parser.ParseException{message: "Tried to branch to `#{inspect lookup}` but it was not found in the symbol_map", context: context, extradata: symbol_map},
-                  }
-                found_parser_fun ->
-                  lookup_context |> found_parser_fun.()
-              end
-            bad_context -> bad_context
-          end
-        end
-      end
-
-
-      defmacro expect(context_ast, parser_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            case context |> unquote(parser_ast) do
-              %{error: nil} = good_context -> good_context
-              bad_context -> ExSpirit.Parser.ExpectationFailureException.makeContextFailed(bad_context)
-            end
-          end
-        end
-      end
-
-
-      defmacro repeat(context_ast, parser_ast, minimum \\ 0, maximum \\ -1) do
-        quote location: :keep do
-          unquote(context_ast) |> repeatFn(fn(c) -> c |> unquote(parser_ast) end, unquote(minimum), unquote(maximum))
-        end
-      end
+      import ExSpirit.Parser, only: :macros
 
       def repeatFn(context, parser, minimum \\ 0, maximum \\ -1) when is_function(parser, 1) do
         repeatFn(context, parser, minimum, maximum, [], 0)
@@ -1175,275 +1368,6 @@ defmodule ExSpirit.Parser do
             end
         end
       end
-
-
-      def success(context, value \\ nil) do
-        if !valid_context?(context) do
-          context
-        else
-          %{context |
-            result: value
-          }
-        end
-      end
-
-
-      def fail(context, reason \\ nil) do
-        if !valid_context?(context) do
-          context
-        else
-          %{context |
-            result: nil,
-            error:  %ExSpirit.Parser.ParseException{message: "Fail parser called with user reason of: #{inspect reason}", context: context, extradata: reason},
-          }
-        end
-      end
-
-
-      defmacro pipe_context_into(context_ast, mapper_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            context |> unquote(mapper_ast)
-          end
-        end
-      end
-
-
-      defmacro pipe_result_into(context_ast, mapper_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            result = context.result |> unquote(mapper_ast)
-            if Exception.exception?(result) do
-              %{context |
-                error: result,
-                result: nil,
-              }
-            else
-              %{context |
-                result: result,
-              }
-            end
-          end
-        end
-      end
-
-
-      defmacro pipe_context_around(context_ast, mapper_ast, parser_ast) do
-        quote location: :keep do
-          context_map_context_around = unquote(context_ast)
-          if !valid_context?(context_map_context_around) do
-            context_map_context_around
-          else
-            case context_map_context_around |> unquote(parser_ast) do
-              %{error: nil} = new_context ->
-                {context_map_context_around, new_context} |> unquote(mapper_ast)
-              bad_context -> bad_context
-            end
-          end
-        end
-      end
-
-
-      defmacro put_state(context_ast, key, from)
-      defmacro put_state(context_ast, key, :context) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            %{context |
-              state: Map.put(context.state, unquote(key), context),
-            }
-          end
-        end
-      end
-      defmacro put_state(context_ast, key, :result) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            %{context |
-              state: Map.put(context.state, unquote(key), context.result),
-            }
-          end
-        end
-      end
-
-
-      defmacro push_state(context_ast, key, from)
-      defmacro push_state(context_ast, key, :context) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            %{context |
-              state: Map.update(context.state, unquote(key), [context], fn x -> [context | List.wrap(x)] end),
-            }
-          end
-        end
-      end
-      defmacro push_state(context_ast, key, :result) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            %{context |
-              state: Map.update(context.state, unquote(key), [context.result], fn x -> [context.result | List.wrap(x)] end),
-            }
-          end
-        end
-      end
-
-
-      defmacro get_state_into(context_ast, key, :result) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            %{context |
-              result: context.state[unquote(key)]
-            }
-          end
-        end
-      end
-
-      defmacro get_state_into(context_ast, key, :context) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            case context.state[unquote(key)] do
-              %ExSpirit.Parser.Context{} = old_context -> old_context
-              _ ->
-                %{context |
-                  result: nil,
-                  error:  %ExSpirit.Parser.ParseException{message: "Attempted to get a context out of the state at `#{inspect unquote(key)}` but there was no context there", context: context, extradata: key},
-                }
-            end
-          end
-        end
-      end
-
-      defmacro get_state_into(context_ast, keys, parser_ast) do
-        keys = if !is_list(keys), do: [keys], else: keys
-        context_binding = quote do context end
-        parser_ast = Macro.postwalk(parser_ast, fn
-          {:&, _, [0]} = orig_ast -> quote do unquote(context_binding).state end
-          {:&, _, [pos]} = orig_ast ->
-            case Enum.at(keys, pos-1) do
-              nil -> orig_ast
-              {key, default} -> quote do Map.get(unquote(context_binding).state, unquote(key), unquote(default)) end
-              key -> quote do unquote(context_binding).state[unquote(key)] end
-            end
-          ast -> ast
-        end)
-        quote location: :keep do
-          unquote(context_binding) = unquote(context_ast)
-          if !valid_context?(unquote(context_binding)) do
-            unquote(context_binding)
-          else
-            unquote(context_binding) |> unquote(parser_ast)
-          end
-        end
-      end
-
-
-      defmacro lookahead(context_ast, parser_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            case context |> unquote(parser_ast) do
-              %{error: nil} -> context
-              bad_context ->
-                %{context |
-                  result: nil,
-                  error:  %ExSpirit.Parser.ParseException{message: "Lookahead failed", context: context, extradata: bad_context},
-                }
-            end
-          end
-        end
-      end
-
-
-      defmacro lookahead_not(context_ast, parser_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            case context |> unquote(parser_ast) do
-              %{error: nil} = bad_context ->
-                %{context |
-                  result: nil,
-                  error:  %ExSpirit.Parser.ParseException{message: "Lookahead_not failed", context: context, extradata: bad_context},
-                }
-              _context -> context
-            end
-          end
-        end
-      end
-
-
-      defmacro lexeme(context_ast, parser_ast) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            case context |> unquote(parser_ast) do
-              %{error: nil} = good_context ->
-                bytes = good_context.position - context.position
-                case context.rest do
-                  <<parsed::binary-size(bytes), newRest::binary>> ->
-                    %{good_context |
-                      result: parsed,
-                      rest: newRest,
-                    }
-                  _ ->
-                    %{context |
-                      result: nil,
-                      error:  %ExSpirit.Parser.ParseException{message: "Lexeme failed, should be impossible, length needed is #{bytes} but available is only #{byte_size(context.rest)}", context: context, extradata: good_context},
-                    }
-                end
-              bad_context -> bad_context
-            end
-          end
-        end
-      end
-
-
-      defmacro eoi(context_ast, opts \\ []) do
-        quote location: :keep do
-          context = unquote(context_ast)
-          if !valid_context?(context) do
-            context
-          else
-            case context do
-              %{rest: ""} ->
-                unquote(if(opts[:pass_result], do: quote(do: context), else: quote(do: %{context | result: unquote(opts[:result])})))
-              _ ->
-                %{context |
-                  result: nil,
-                  error:  %ExSpirit.Parser.ParseException{message: "eoi failed, not at End Of Input", context: context},
-                }
-            end
-          end
-        end
-      end
-
 
       unquote(text_use_ast)
 
